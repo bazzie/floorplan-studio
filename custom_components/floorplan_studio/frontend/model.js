@@ -1,11 +1,12 @@
 // Shared geometry, document and entity-state helpers for Floorplan Studio.
+import { t } from "./i18n.js";
 
 export const uid = () =>
   Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-6);
 
 export const clone = (o) => JSON.parse(JSON.stringify(o));
 
-export const newFloor = (level = 0, name = "Floor") => ({
+export const newFloor = (level = 0, name = t("Floor")) => ({
   id: uid(),
   name,
   level,
@@ -559,10 +560,12 @@ export function compassSvg(rotation, size = 72) {
     const a = ((rotation + deg) * Math.PI) / 180;
     return [c + rad * Math.sin(a), c - rad * Math.cos(a)];
   };
-  const letters = [["N", 0], ["E", 90], ["S", 180], ["W", 270]]
-    .map(([t, d]) => {
+  // The four letters in the current language (Dutch: N O Z W), north first
+  const names = t("N E S W").split(" ");
+  const letters = [0, 90, 180, 270]
+    .map((d, i) => {
       const [x, y] = at(d, lr);
-      return `<text x="${x}" y="${y}" class="${t === "N" ? "n" : ""}" text-anchor="middle" dominant-baseline="central">${t}</text>`;
+      return `<text x="${x}" y="${y}" class="${i === 0 ? "n" : ""}" text-anchor="middle" dominant-baseline="central">${names[i] || ""}</text>`;
     })
     .join("");
   const ticks = Array.from({ length: 8 }, (_, i) => {

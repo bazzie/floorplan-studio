@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Floorplan Studio",
+        "description": "Voegt een Plattegrond-paneel toe aan de zijbalk, waarin je je huis tekent en in 2D of 3D bekijkt."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Floorplan Studio is al ingesteld."
+    }
+  }
+}

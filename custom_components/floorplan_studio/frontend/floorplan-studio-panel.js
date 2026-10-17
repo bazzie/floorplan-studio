@@ -39,6 +39,7 @@ import { FLOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, floorFinish, isOutdoor
 import { ROOF_TYPES, roofHeight } from "./roof.js";
 import { cleaningRoom, currentRoomSensor, vacuumRooms } from "./robot.js";
 import { parseObj, scanToFloor } from "./scan.js";
+import { setLanguage, t } from "./i18n.js";
 
 const PALETTE_LIMIT = 150;
 
@@ -49,8 +50,8 @@ const DAY_MODES = {
   night: { icon: "mdi:weather-night", label: "Night" },
 };
 const smoothstep = (a, b, v) => {
-  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
-  return t * t * (3 - 2 * t);
+  const k = Math.min(1, Math.max(0, (v - a) / (b - a)));
+  return k * k * (3 - 2 * k);
 };
 
 const DOMAIN = "floorplan_studio";
@@ -272,6 +273,11 @@ class FloorplanStudioPanel extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
+    // The panel's own text follows the user's Home Assistant language
+    if (setLanguage(hass.language || hass.locale?.language) && !first && this._root) {
+      this._docVersion++; // so the 2D and 3D views redraw their text too
+      this._refreshAll();
+    }
     if (first) this._load();
     if (this._plan) this._plan.hass = hass;
     if (this._view3d) this._view3d.hass = hass;
@@ -347,12 +353,12 @@ class FloorplanStudioPanel extends HTMLElement {
   // ---------- data ----------
 
   async _load() {
-    this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="loading">Loading floorplan…</div>`;
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="loading">${t("Loading floorplan…")}</div>`;
     try {
       const res = await this._hass.callWS({ type: `${DOMAIN}/get` });
       this._setSaved(res.data);
     } catch (err) {
-      this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="loading">Failed to load floorplan: ${escapeHtml(err.message || err)}</div>`;
+      this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="loading">${t("Failed to load floorplan: {error}", { error: escapeHtml(err.message || err) })}</div>`;
       return;
     }
     this._build();
@@ -390,7 +396,7 @@ class FloorplanStudioPanel extends HTMLElement {
       // Our pending auto-save will be written over theirs
       if (!this._warnedConcurrent || Date.now() - this._warnedConcurrent > 30000) {
         this._warnedConcurrent = Date.now();
-        this._toast("Someone else is editing this floorplan too. The last change saved wins.");
+        this._toast(t("Someone else is editing this floorplan too. The last change saved wins."));
       }
       return;
     }
@@ -515,7 +521,7 @@ class FloorplanStudioPanel extends HTMLElement {
       img.onload = () => resolve({ url, aspect: img.naturalHeight / img.naturalWidth });
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error("this browser can't display that image"));
+        reject(new Error(t("this browser can't display that image")));
       };
       img.src = url;
     });
@@ -531,12 +537,12 @@ class FloorplanStudioPanel extends HTMLElement {
     try {
       URL.revokeObjectURL((await this._decodeImage(file)).url);
     } catch (err) {
-      this._toast(`Can't use this image: ${err.message}`);
+      this._toast(t("Can't use this image: {error}", { error: err.message }));
       return;
     }
     const form = new FormData();
     form.append("file", file);
-    this._toast("Uploading…");
+    this._toast(t("Uploading…"));
     try {
       const r = await this._fetch(IMAGE_URL, { method: "POST", body: form });
       const body = await r.json();
@@ -547,9 +553,9 @@ class FloorplanStudioPanel extends HTMLElement {
       });
       this._plan.fit();
       this._setTool("calibrate");
-      this._toast("Blueprint added. Now click two points with a known distance to set the scale.");
+      this._toast(t("Blueprint added. Now click two points with a known distance to set the scale."));
     } catch (err) {
-      this._toast(`Upload failed: ${err.message || err}`);
+      this._toast(t("Upload failed: {error}", { error: err.message || err }));
     }
   }
 
@@ -557,12 +563,12 @@ class FloorplanStudioPanel extends HTMLElement {
     const bp = this._floor?.blueprint;
     this._setTool("select");
     if (!bp) {
-      this._toast("Upload a blueprint first to calibrate its scale.");
+      this._toast(t("Upload a blueprint first to calibrate its scale."));
       return;
     }
     const measured = dist(a, b);
     const answer = window.prompt(
-      `Measured ${measured.toFixed(2)} m on the blueprint. What is the real distance in metres?`,
+      t("Measured {m} m on the blueprint. What is the real distance in metres?", { m: measured.toFixed(2) }),
       measured.toFixed(2)
     );
     const real = parseFloat(String(answer).replace(",", "."));
@@ -575,7 +581,7 @@ class FloorplanStudioPanel extends HTMLElement {
       bp.y = round(a[1] + (bp.y - a[1]) * k);
     });
     this._plan.fit();
-    this._toast(`Blueprint scaled ×${k.toFixed(3)}`);
+    this._toast(t("Blueprint scaled ×{k}", { k: k.toFixed(3) }));
   }
 
   // ---------- edit state ----------
@@ -638,11 +644,14 @@ class FloorplanStudioPanel extends HTMLElement {
 
   async _finishEditing() {
     if (!(await this._saveAll())) {
-      this._toast(`Could not save: ${this._saveError || "unknown error"}. Your changes are kept; try again.`);
+      this._toast(t("Could not save: {error}. Your changes are kept; try again.", { error: this._saveError || t("unknown error") }));
       return;
     }
     const placeholders = this._doc.floors.reduce((n, f) => n + f.markers.filter((m) => !m.entity_id).length, 0);
-    if (placeholders) this._toast(`${placeholders} marker(s) without an entity were removed.`);
+    if (placeholders) {
+      this._toast(placeholders === 1 ? t("1 marker without an entity was removed.")
+        : t("{n} markers without an entity were removed.", { n: placeholders }));
+    }
     this._setSaved(this._saved);
     this._editing = false;
     this._dirty = false;
@@ -699,7 +708,7 @@ class FloorplanStudioPanel extends HTMLElement {
   _addFloor() {
     const levels = this._doc.floors.map((f) => f.level);
     const level = levels.length ? Math.max(...levels) + 1 : 0;
-    const floor = newFloor(level, level === 0 ? "Ground floor" : `Floor ${level}`);
+    const floor = newFloor(level, level === 0 ? t("Ground floor") : t("Floor {n}", { n: level }));
     this._change(() => {
       this._doc.floors.push(floor);
       this._floorId = floor.id;
@@ -710,14 +719,14 @@ class FloorplanStudioPanel extends HTMLElement {
 
   /** A LiDAR scan (RoomPlan OBJ) becomes a new floor on top of the others. */
   async _importScan(file) {
-    this._toast("Reading the scan…");
+    this._toast(t("Reading the scan…"));
     let result;
     try {
       const levels = this._doc.floors.map((f) => f.level);
       const level = levels.length ? Math.max(...levels) + 1 : 0;
-      result = scanToFloor(parseObj(await file.text()), { name: file.name.replace(/\.obj$/i, "") || "Scan", level });
+      result = scanToFloor(parseObj(await file.text()), { name: file.name.replace(/\.obj$/i, "") || t("Scan"), level });
     } catch (err) {
-      this._toast(`Import failed: ${err.message || err}`);
+      this._toast(t("Import failed: {error}", { error: err.message || err }));
       return;
     }
     const { floor, counts } = result;
@@ -728,13 +737,15 @@ class FloorplanStudioPanel extends HTMLElement {
     });
     this._renderHeader();
     this._plan.fit();
-    const n = (k, one, many = `${one}s`) => `${counts[k]} ${counts[k] === 1 ? one : many}`;
-    this._toast(`Imported ${n("walls", "wall")}, ${n("rooms", "room")}, ${n("doors", "door")}, ${n("windows", "window")} and ${n("furniture", "object")}`);
+    const n = (k, one, many) => (counts[k] === 1 ? t(one) : t(many, { n: counts[k] }));
+    this._toast(t("Imported {walls}, {rooms}, {doors}, {windows} and {furniture}", {
+      walls: n("walls", "1 wall", "{n} walls"), rooms: n("rooms", "1 room", "{n} rooms"), doors: n("doors", "1 door", "{n} doors"),
+      windows: n("windows", "1 window", "{n} windows"), furniture: n("furniture", "1 object", "{n} objects") }));
   }
 
   _deleteFloor() {
     if (this._doc.floors.length <= 1) return;
-    if (!window.confirm(`Delete "${this._floor.name}" and everything on it?`)) return;
+    if (!window.confirm(t("Delete \"{name}\" and everything on it?", { name: this._floor.name }))) return;
     this._change(() => {
       this._doc.floors = this._doc.floors.filter((f) => f.id !== this._floorId);
       this._floorId = this._doc.floors[0].id;
@@ -782,7 +793,7 @@ class FloorplanStudioPanel extends HTMLElement {
       this._deleteSelected();
       return;
     }
-    const tool = TOOLS.find((t) => t.key === e.key.toLowerCase());
+    const tool = TOOLS.find((x) => x.key === e.key.toLowerCase());
     if (tool && this._view === "2d") this._setTool(tool.id);
   }
 
@@ -968,28 +979,30 @@ class FloorplanStudioPanel extends HTMLElement {
     const icon = (i) => `<ha-icon icon="${i}"></ha-icon>`;
     let status;
     if (this._saveError) {
-      status = `<span class="save-status error" title="${escapeHtml(this._saveError)}">${icon("mdi:alert-circle-outline")}Save failed</span>
-        <button class="hbtn" data-act="retry">Retry</button>`;
+      status = `<span class="save-status error" title="${escapeHtml(this._saveError)}">${icon("mdi:alert-circle-outline")}${t("Save failed")}</span>
+        <button class="hbtn" data-act="retry">${t("Retry")}</button>`;
     } else if (this._dirty || this._saving) {
-      status = `<span class="save-status">${icon("mdi:cloud-upload-outline")}Saving…</span>`;
+      status = `<span class="save-status">${icon("mdi:cloud-upload-outline")}${t("Saving…")}</span>`;
     } else {
-      status = `<span class="save-status">${icon("mdi:cloud-check-outline")}All changes saved</span>`;
+      status = `<span class="save-status">${icon("mdi:cloud-check-outline")}${t("All changes saved")}</span>`;
     }
     const editBtns = this._editing
       ? `${status}
-         <button class="hbtn" data-act="undo" title="Undo (Ctrl+Z)" ${this._undo.length ? "" : "disabled"}>${icon("mdi:undo")}</button>
-         <button class="hbtn" data-act="redo" title="Redo (Ctrl+Shift+Z)" ${this._redo.length ? "" : "disabled"}>${icon("mdi:redo")}</button>
-         <button class="hbtn primary" data-act="done">Done</button>`
-      : `<button class="hbtn primary" data-act="edit">${icon("mdi:pencil")} Edit</button>`;
+         <button class="hbtn" data-act="undo" title="${t("Undo (Ctrl+Z)")}" ${this._undo.length ? "" : "disabled"}>${icon("mdi:undo")}</button>
+         <button class="hbtn" data-act="redo" title="${t("Redo (Ctrl+Shift+Z)")}" ${this._redo.length ? "" : "disabled"}>${icon("mdi:redo")}</button>
+         <button class="hbtn primary" data-act="done">${t("Done")}</button>`
+      : `<button class="hbtn primary" data-act="edit">${icon("mdi:pencil")} ${t("Edit")}</button>`;
     this._header.innerHTML = `
       <span class="menu"></span>
-      <div class="title">Floorplan</div>
+      <div class="title">${t("Floorplan")}</div>
       <div class="tabs">
         ${floors.map((f) => `<button class="tab ${f.id === this._floorId ? "on" : ""}" data-floor="${f.id}">${escapeHtml(f.name)}</button>`).join("")}
-        ${this._editing ? `<button class="tab" data-act="add-floor" title="Add floor">+</button>` : ""}
+        ${this._editing ? `<button class="tab" data-act="add-floor" title="${t("Add floor")}">+</button>` : ""}
       </div>
       <div class="spacer"></div>
-      <button class="hbtn" data-act="daynight" title="Day/night: ${DAY_MODES[this._dayMode].label}${this._dayMode === "auto" ? ` (${this._sunInfo().daylight > 0.5 ? "day" : "night"} now)` : ""}. Click to change.">
+      <button class="hbtn" data-act="daynight" title="${this._dayMode === "auto"
+        ? t(this._sunInfo().daylight > 0.5 ? "Day/night: {mode} (day now). Click to change." : "Day/night: {mode} (night now). Click to change.", { mode: t(DAY_MODES.auto.label) })
+        : t("Day/night: {mode}. Click to change.", { mode: t(DAY_MODES[this._dayMode].label) })}">
         <ha-icon icon="${this._dayMode === "auto" ? ("mdi:sun-clock") : DAY_MODES[this._dayMode].icon}"></ha-icon>
       </button>
       <div class="seg">
@@ -1015,7 +1028,7 @@ class FloorplanStudioPanel extends HTMLElement {
       const order = ["auto", "day", "night"];
       this._dayMode = order[(order.indexOf(this._dayMode) + 1) % order.length];
       writePref("daynight", this._dayMode);
-      this._toast(`Day/night: ${DAY_MODES[this._dayMode].label}`);
+      this._toast(t("Day/night: {mode}", { mode: t(DAY_MODES[this._dayMode].label) }));
       this._refreshViews();
       this._renderHeader();
       return;
@@ -1055,10 +1068,10 @@ class FloorplanStudioPanel extends HTMLElement {
     this._tools.hidden = !show;
     if (!show) return;
     const is3d = this._view === "3d";
-    this._tools.innerHTML = TOOLS.filter((t) => !t.hidden).map((t) => `
-      <button class="tool ${t.id === this._tool ? "on" : ""}" data-tool="${t.id}"
-        title="${t.label} (${t.key.toUpperCase()})" ${is3d ? "disabled" : ""}>
-        <ha-icon icon="${t.icon}"></ha-icon>${t.label}
+    this._tools.innerHTML = TOOLS.filter((x) => !x.hidden).map((x) => `
+      <button class="tool ${x.id === this._tool ? "on" : ""}" data-tool="${x.id}"
+        title="${t(x.label)} (${x.key.toUpperCase()})" ${is3d ? "disabled" : ""}>
+        <ha-icon icon="${x.icon}"></ha-icon>${t(x.label)}
       </button>`).join("");
   }
 
@@ -1084,227 +1097,236 @@ class FloorplanStudioPanel extends HTMLElement {
     const catalog = this._tool === "furniture" || (!!this._keepCatalog && this._selection?.id === this._keepCatalog);
     const placed = catalog && this._tool !== "furniture" ? this._findSelected() : null;
     const item = catalog ? null : this._findSelected();
-    const tool = TOOLS.find((t) => t.id === this._tool);
+    const tool = TOOLS.find((x) => x.id === this._tool);
     const num = (field, label, value, step = 0.05, min = 0) => `
       <div class="field"><label>${label}</label>
         <input type="number" data-field="${field}" value="${value ?? ""}" step="${step}" min="${min}"></div>`;
     const entity = (field, label, value, hint = "", placeholder = "light.living_room") => `
       <div class="field"><label>${label}</label>
-        <input list="entities" data-field="${field}" value="${escapeHtml(value || "")}" placeholder="e.g. ${placeholder}" autocomplete="off">
+        <input list="entities" data-field="${field}" value="${escapeHtml(value || "")}" placeholder="${t("e.g. {example}", { example: placeholder })}" autocomplete="off">
         ${hint ? `<span class="muted">${hint}</span>` : ""}
-        ${value && !this._hass.states[value] ? `<span class="warn">Entity not found</span>` : ""}</div>`;
-    const del = `<div class="actions"><button class="btn danger" data-act="delete"><ha-icon icon="mdi:delete"></ha-icon>Delete</button></div>`;
+        ${value && !this._hass.states[value] ? `<span class="warn">${t("Entity not found")}</span>` : ""}</div>`;
+    const del = `<div class="actions"><button class="btn danger" data-act="delete"><ha-icon icon="mdi:delete"></ha-icon>${t("Delete")}</button></div>`;
     let html = "";
 
     if (this._view === "3d") {
-      html += `<div class="help">You're looking at your changes in 3D. Switch to 2D to keep drawing; settings below still work here.</div>`;
+      html += `<div class="help">${t("You're looking at your changes in 3D. Switch to 2D to keep drawing; settings below still work here.")}</div>`;
     } else if (tool) {
-      html += `<div class="help"><b>${tool.label}:</b> ${tool.help}</div>`;
+      html += `<div class="help"><b>${t(tool.label)}:</b> ${t(tool.help)}</div>`;
     }
 
     if (item && this._selection.kind === "wall") {
-      html += `<h3><ha-icon icon="mdi:wall"></ha-icon>Wall</h3>
-        <div class="row">${num("thickness", "Thickness (m)", item.thickness, 0.01, 0.01)}
-        ${num("length", "Length (m)", round(dist(item.a, item.b), 2), 0.05, 0.05)}</div>${del}`;
+      html += `<h3><ha-icon icon="mdi:wall"></ha-icon>${t("Wall")}</h3>
+        <div class="row">${num("thickness", t("Thickness (m)"), item.thickness, 0.01, 0.01)}
+        ${num("length", t("Length (m)"), round(dist(item.a, item.b), 2), 0.05, 0.05)}</div>${del}`;
     } else if (item && this._selection.kind === "roof") {
       const finish = roofFinish(item);
       const sloped = item.type !== "flat";
-      html += `<h3><ha-icon icon="mdi:home-roof"></ha-icon>Roof</h3>
-        <div class="field"><label>Name (optional)</label><input data-field="name" value="${escapeHtml(item.name || "")}"></div>
-        <div class="field"><label>Type</label><select data-field="type">
-          ${Object.entries(ROOF_TYPES).map(([k, label]) => `<option value="${k}" ${(item.type || "gable") === k ? "selected" : ""}>${label}</option>`).join("")}
+      html += `<h3><ha-icon icon="mdi:home-roof"></ha-icon>${t("Roof")}</h3>
+        <div class="field"><label>${t("Name (optional)")}</label><input data-field="name" value="${escapeHtml(item.name || "")}"></div>
+        <div class="field"><label>${t("Type")}</label><select data-field="type">
+          ${Object.entries(ROOF_TYPES).map(([k, label]) => `<option value="${k}" ${(item.type || "gable") === k ? "selected" : ""}>${t(label)}</option>`).join("")}
         </select></div>
-        ${sloped ? `<div class="field"><label>Pitch <output data-out="pitch">${Math.round(item.pitch ?? 35)}°</output></label>
+        ${sloped ? `<div class="field"><label>${t("Pitch")} <output data-out="pitch">${Math.round(item.pitch ?? 35)}°</output></label>
           <input type="range" min="5" max="60" step="1" data-field="pitch" value="${Math.round(item.pitch ?? 35)}"></div>` : ""}
-        <div class="row">${num("overhang", "Overhang (m)", item.overhang ?? 0.3, 0.05, 0)}
+        <div class="row">${num("overhang", t("Overhang (m)"), item.overhang ?? 0.3, 0.05, 0)}
           ${["gable", "shed"].includes(item.type || "gable") ? `<div class="field"><label>&nbsp;</label>
-            <button class="btn" data-act="turn-ridge" title="Run the ridge the other way"><ha-icon icon="mdi:rotate-right"></ha-icon>Turn ridge</button></div>` : ""}</div>
-        ${item.type === "shed" ? `<div class="actions"><button class="btn" data-act="flip-roof" title="Put the high side on the other edge">
-          <ha-icon icon="mdi:swap-vertical"></ha-icon>Flip slope</button></div>` : ""}
-        <div class="field"><label>Covering</label><select data-field="material">
-          ${Object.entries(ROOF_MATERIALS).map(([k, d]) => `<option value="${k}" ${finish.material === k ? "selected" : ""}>${d.label}</option>`).join("")}
+            <button class="btn" data-act="turn-ridge" title="${t("Run the ridge the other way")}"><ha-icon icon="mdi:rotate-right"></ha-icon>${t("Turn ridge")}</button></div>` : ""}</div>
+        ${item.type === "shed" ? `<div class="actions"><button class="btn" data-act="flip-roof" title="${t("Put the high side on the other edge")}">
+          <ha-icon icon="mdi:swap-vertical"></ha-icon>${t("Flip slope")}</button></div>` : ""}
+        <div class="field"><label>${t("Covering")}</label><select data-field="material">
+          ${Object.entries(ROOF_MATERIALS).map(([k, d]) => `<option value="${k}" ${finish.material === k ? "selected" : ""}>${t(d.label)}</option>`).join("")}
         </select></div>
-        <div class="field"><label>Colour</label><div class="row">
+        <div class="field"><label>${t("Colour")}</label><div class="row">
           <input type="color" data-field="color" value="${escapeHtml(finish.color)}">
-          ${item.color ? `<button class="btn" data-act="reset-color" title="Back to the covering's colour">Reset</button>` : ""}</div></div>
-        <p class="muted">Rests on this floor's walls. ${sloped ? `Ridge ${roofHeight(item).toFixed(2)} m above the wall tops.` : ""}
-          Hide roofs in 3D with the “Roofs” button to look inside.</p>
+          ${item.color ? `<button class="btn" data-act="reset-color" title="${t("Back to the covering's colour")}">${t("Reset")}</button>` : ""}</div></div>
+        <p class="muted">${t("Rests on this floor's walls.")} ${sloped ? t("Ridge {h} m above the wall tops.", { h: roofHeight(item).toFixed(2) }) : ""}
+          ${t("Hide roofs in 3D with the “Roofs” button to look inside.")}</p>
         ${del}`;
     } else if (item && this._selection.kind === "room") {
-      html += isOutdoor(item) ? `<h3><ha-icon icon="mdi:grass"></ha-icon>Outdoor area</h3>` : `<h3><ha-icon icon="mdi:vector-polygon"></ha-icon>Room</h3>`;
+      html += isOutdoor(item) ? `<h3><ha-icon icon="mdi:grass"></ha-icon>${t("Outdoor area")}</h3>` : `<h3><ha-icon icon="mdi:vector-polygon"></ha-icon>${t("Room")}</h3>`;
       html += `
-        <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(item.name)}"></div>
-        <div class="field"><label>Colour</label><input type="color" data-field="color" value="${escapeHtml(item.color)}"></div>
+        <div class="field"><label>${t("Name")}</label><input data-field="name" value="${escapeHtml(item.name)}"></div>
+        <div class="field"><label>${t("Colour")}</label><input type="color" data-field="color" value="${escapeHtml(item.color)}"></div>
         ${this._areaField(item)}
-        ${entity("entity_id", "Highlight entity", item.entity_id, item.area_id
-          ? "Optional. Without one, the room lights up when any light in the area is on."
-          : "Room lights up when this is on (e.g. a light or motion sensor). Tap the room to open it.")}
-        ${entity("sensor_entity_id", "Label sensor", item.sensor_entity_id, item.area_id
-          ? "Optional. Defaults to the area's temperature sensor."
-          : "Value shown under the room name (e.g. temperature).", "sensor.living_room_temperature")}
+        ${entity("entity_id", t("Highlight entity"), item.entity_id, item.area_id
+          ? t("Optional. Without one, the room lights up when any light in the area is on.")
+          : t("Room lights up when this is on (e.g. a light or motion sensor). Tap the room to open it."))}
+        ${entity("sensor_entity_id", t("Label sensor"), item.sensor_entity_id, item.area_id
+          ? t("Optional. Defaults to the area's temperature sensor.")
+          : t("Value shown under the room name (e.g. temperature)."), "sensor.living_room_temperature")}
         ${this._finishFields(item)}
         ${del}
         ${this._areaEntitySection(item)}`;
     } else if (item && this._selection.kind === "opening") {
-      html += `<h3><ha-icon icon="${item.type === "door" ? "mdi:door" : "mdi:window-closed-variant"}"></ha-icon>${item.type === "door" ? "Door" : "Window"}</h3>
-        <div class="field"><label>Type</label><select data-field="type">
-          <option value="door" ${item.type === "door" ? "selected" : ""}>Door</option>
-          <option value="window" ${item.type === "window" ? "selected" : ""}>Window</option></select></div>
-        <div class="row">${num("width", "Width (m)", item.width, 0.05, 0.1)}${num("height", "Height (m)", item.height, 0.05, 0.1)}</div>
-        ${num("sill", "Sill height (m)", item.sill, 0.05, 0)}
-        ${item.type === "door" ? `<div class="field"><label>Style</label><select data-field="style">
+      html += `<h3><ha-icon icon="${item.type === "door" ? "mdi:door" : "mdi:window-closed-variant"}"></ha-icon>${item.type === "door" ? t("Door") : t("Window")}</h3>
+        <div class="field"><label>${t("Type")}</label><select data-field="type">
+          <option value="door" ${item.type === "door" ? "selected" : ""}>${t("Door")}</option>
+          <option value="window" ${item.type === "window" ? "selected" : ""}>${t("Window")}</option></select></div>
+        <div class="row">${num("width", t("Width (m)"), item.width, 0.05, 0.1)}${num("height", t("Height (m)"), item.height, 0.05, 0.1)}</div>
+        ${num("sill", t("Sill height (m)"), item.sill, 0.05, 0)}
+        ${item.type === "door" ? `<div class="field"><label>${t("Style")}</label><select data-field="style">
           ${[["panel", "Panelled"], ["half_glass", "Half glass, 4 panes"], ["half_glass_single", "Half glass, one pane"], ["glass", "Full glass"], ["sliding_double", "Double sliding, glass"]]
-            .map(([v, label]) => `<option value="${v}" ${(item.style || "panel") === v ? "selected" : ""}>${label}</option>`).join("")}
+            .map(([v, label]) => `<option value="${v}" ${(item.style || "panel") === v ? "selected" : ""}>${t(label)}</option>`).join("")}
         </select></div>` : ""}
         ${item.type === "door" || item.type === "window" ? `<div class="actions" style="margin:0 0 12px">
-          <button class="btn" data-act="flip-hinge" title="Move the hinge to the other side of the opening"><ha-icon icon="mdi:swap-horizontal"></ha-icon>Flip hinge</button>
-          <button class="btn" data-act="flip-swing" title="Swing into the room on the other side of the wall"><ha-icon icon="mdi:swap-vertical"></ha-icon>Flip opening</button>
+          <button class="btn" data-act="flip-hinge" title="${t("Move the hinge to the other side of the opening")}"><ha-icon icon="mdi:swap-horizontal"></ha-icon>${t("Flip hinge")}</button>
+          <button class="btn" data-act="flip-swing" title="${t("Swing into the room on the other side of the wall")}"><ha-icon icon="mdi:swap-vertical"></ha-icon>${t("Flip opening")}</button>
         </div>` : ""}
-        ${entity("entity_id", "Open/closed sensor", item.entity_id, "Optional. Shows the door/window as open when this entity is on/open.", "binary_sensor.front_door")}
+        ${entity("entity_id", t("Open/closed sensor"), item.entity_id, t("Optional. Shows the door/window as open when this entity is on/open."), "binary_sensor.front_door")}
         ${del}`;
     } else if (item && this._selection.kind === "marker") {
-      html += `<h3><ha-icon icon="mdi:map-marker"></ha-icon>Entity marker</h3>
-        ${entity("entity_id", "Entity", item.entity_id)}
-        ${!item.entity_id ? `<div class="warn" style="margin:-4px 0 10px">Pick an entity, or this marker will be dropped when saving.</div>` : ""}
-        <div class="field"><label>Icon (optional)</label><input data-field="icon" value="${escapeHtml(item.icon || "")}" placeholder="mdi:lightbulb"></div>
-        <div class="field"><label>Tap action</label><select data-field="tap_action">
+      html += `<h3><ha-icon icon="mdi:map-marker"></ha-icon>${t("Entity marker")}</h3>
+        ${entity("entity_id", t("Entity"), item.entity_id)}
+        ${!item.entity_id ? `<div class="warn" style="margin:-4px 0 10px">${t("Pick an entity, or this marker will be dropped when saving.")}</div>` : ""}
+        <div class="field"><label>${t("Icon (optional)")}</label><input data-field="icon" value="${escapeHtml(item.icon || "")}" placeholder="mdi:lightbulb"></div>
+        <div class="field"><label>${t("Tap action")}</label><select data-field="tap_action">
           ${tapOptions(this._hass, item, item.tap_action)}
         </select></div>
         ${doubleTapField(item, this._hass)}
-        <label class="check"><input type="checkbox" data-field="show_state" ${item.show_state ? "checked" : ""}> Show state below icon</label>
+        <label class="check"><input type="checkbox" data-field="show_state" ${item.show_state ? "checked" : ""}> ${t("Show state below icon")}</label>
         ${del}`;
     } else if (item && this._selection.kind === "furniture") {
       const def = catalogItem(item.type);
       const color = item.color || def.color;
-      html += `<h3><ha-icon icon="${def.icon}"></ha-icon>${escapeHtml(item.name || def.label)}</h3>
-        <div class="field"><label>Name (optional)</label><input data-field="name" value="${escapeHtml(item.name || "")}" placeholder="${escapeHtml(def.label)}"></div>
-        <div class="field"><label>Type</label><select data-field="type">
-          ${sortedCategories().map((c) => `<optgroup label="${c}">${Object.entries(CATALOG).filter(([, d]) => d.cat === c)
-            .map(([k, d]) => `<option value="${k}" ${k === item.type ? "selected" : ""}>${d.label}</option>`).join("")}</optgroup>`).join("")}
+      html += `<h3><ha-icon icon="${def.icon}"></ha-icon>${escapeHtml(item.name || t(def.label))}</h3>
+        <div class="field"><label>${t("Name (optional)")}</label><input data-field="name" value="${escapeHtml(item.name || "")}" placeholder="${escapeHtml(t(def.label))}"></div>
+        <div class="field"><label>${t("Type")}</label><select data-field="type">
+          ${sortedCategories().map((c) => `<optgroup label="${escapeHtml(t(c))}">${Object.entries(CATALOG).filter(([, d]) => d.cat === c)
+            .sort(([, a], [, b]) => t(a.label).localeCompare(t(b.label)))
+            .map(([k, d]) => `<option value="${k}" ${k === item.type ? "selected" : ""}>${escapeHtml(t(d.label))}</option>`).join("")}</optgroup>`).join("")}
         </select></div>
-        <div class="row">${num("w", "Width (m)", item.w, 0.05, 0.05)}${num("d", "Depth (m)", item.d, 0.05, 0.05)}${def.hole ? "" : num("h", def.ceiling ? "Drop (m)" : "Height (m)", item.h, 0.05, 0.01)}</div>
+        <div class="row">${num("w", t("Width (m)"), item.w, 0.05, 0.05)}${num("d", t("Depth (m)"), item.d, 0.05, 0.05)}${def.hole ? "" : num("h", def.ceiling ? t("Drop (m)") : t("Height (m)"), item.h, 0.05, 0.01)}</div>
         ${def.hole
-          ? `<p class="muted">An opening in this floor, e.g. for the stairs or a vide. The 3D view shows the floor below through it.</p>`
+          ? `<p class="muted">${t("An opening in this floor, e.g. for the stairs or a vide. The 3D view shows the floor below through it.")}</p>`
           : def.ceiling
-          ? `<p class="muted">Hangs from the ceiling of this floor. Drop is how far it hangs down.</p>`
-          : num("z", "Raised (m) — height of the surface it stands on", item.z || 0, 0.05, 0)}
-        <div class="row">
-          <div class="field"><label>Rotation (°)</label><input type="number" step="15" data-field="rotation" value="${Math.round(item.rotation || 0)}"></div>
-          <div class="field"><label>&nbsp;</label><button class="btn" data-act="rotate90"><ha-icon icon="mdi:rotate-right"></ha-icon>90°</button></div>
-        </div>
-        ${def.hole ? "" : `<div class="field"><label>Colour</label>
+          ? `<p class="muted">${t("Hangs from the ceiling of this floor. Drop is how far it hangs down.")}</p>`
+          : num("z", t("Raised (m) — height of the surface it stands on"), item.z || 0, 0.05, 0)}
+        <div class="field"><label>${t("Rotation")} <output data-out="rotation">${Math.round(normalizeAngle(item.rotation || 0))}°</output></label>
+          <div class="row" style="align-items:center"><input type="range" min="0" max="359" step="1" data-field="rotation" value="${Math.round(normalizeAngle(item.rotation || 0))}" style="flex:1">
+          <button class="btn" data-act="rotate90" title="${t("Turn 90° clockwise")}"><ha-icon icon="mdi:rotate-right"></ha-icon>90°</button></div></div>
+        ${def.hole ? "" : `<div class="field"><label>${t("Colour")}</label>
           <div class="row"><input type="color" data-field="color" value="${/^#[0-9a-f]{6}$/i.test(color) ? color : "#b0b4ba"}">
-          ${item.color ? `<button class="btn" data-act="reset-color" title="Back to the default colour">Reset</button>` : ""}</div></div>
+          ${item.color ? `<button class="btn" data-act="reset-color" title="${t("Back to the default colour")}">${t("Reset")}</button>` : ""}</div></div>
+        ${def.tilt ? (() => {
+          const tilt = Math.round(item.tilt || 0);
+          return `<div class="field"><label>${t("Tilt")} <output data-out="tilt">${tilt}°</output></label>
+            <input type="range" min="0" max="85" step="1" data-field="tilt" value="${tilt}">
+            <span class="muted">${t("0° shines straight down. Rotation turns the spot to where it points (the arrow on the plan).")}</span></div>`;
+        })() : ""}
         ${def.light?.beam ? (() => {
           const angle = Math.round(item.beam_angle || defaultBeamAngle(item.type));
-          return `<div class="field"><label>Beam angle <output data-out="beam_angle">${angle}°</output></label>
+          return `<div class="field"><label>${t("Beam angle")} <output data-out="beam_angle">${angle}°</output></label>
             <div class="row"><input type="range" min="10" max="120" step="1" data-field="beam_angle" value="${angle}" style="flex:1">
-            ${item.beam_angle ? `<button class="btn" data-act="reset-beam" title="Back to this light's default (${defaultBeamAngle(item.type)}°)">Reset</button>` : ""}</div>
-            <span class="muted">How wide the light spreads: narrow for an accent spot, wide to light a whole area.</span></div>`;
+            ${item.beam_angle ? `<button class="btn" data-act="reset-beam" title="${t("Back to this light's default ({angle}°)", { angle: defaultBeamAngle(item.type) })}">${t("Reset")}</button>` : ""}</div>
+            <span class="muted">${t("How wide the light spreads: narrow for an accent spot, wide to light a whole area.")}</span></div>`;
         })() : ""}
         ${def.light || domainOf(item.entity_id) === "light" ? (() => {
           const pct = Math.round((item.light_strength ?? 1) * 100);
-          return `<div class="field"><label>Light strength <output data-out="light_strength">${pct}%</output></label>
+          return `<div class="field"><label>${t("Light strength")} <output data-out="light_strength">${pct}%</output></label>
             <div class="row"><input type="range" min="10" max="300" step="5" data-field="light_strength" data-unit="%" value="${pct}" style="flex:1">
-            ${item.light_strength ? `<button class="btn" data-act="reset-strength" title="Back to 100%">Reset</button>` : ""}</div>
-            <span class="muted">How much light this lamp casts in the 3D view and on the plan, if it looks too bright or too dim. The lamp itself isn't changed.</span></div>`;
+            ${item.light_strength ? `<button class="btn" data-act="reset-strength" title="${t("Back to 100%")}">${t("Reset")}</button>` : ""}</div>
+            <span class="muted">${t("How much light this lamp casts in the 3D view and on the plan, if it looks too bright or too dim. The lamp itself isn't changed.")}</span></div>`;
         })() : ""}
-        <h4>${def.passive ? "Connected to" : "Linked entity"}</h4>
+        <h4>${def.passive ? t("Connected to") : t("Linked entity")}</h4>
         ${def.passive ? (() => {
           // Wired speakers: one tap to connect them to an amplifier, receiver or TV on this floor
           const amps = [...new Set(this._floor.furniture
             .filter((a) => a !== item && !catalogItem(a.type).passive && domainOf(a.entity_id) === "media_player")
             .sort((a, b) => dist([a.x, a.y], [item.x, item.y]) - dist([b.x, b.y], [item.x, item.y]))
             .map((a) => a.entity_id))];
-          return `${entity("entity_id", "Amplifier / receiver", item.entity_id,
-            "The media player driving this speaker. It shows sound waves while that plays. For an amplifier that only reports on/off, the speaker follows the player on its selected input: a piece named after the input (e.g. \"Apple TV\"), or plays whenever the amplifier is on and not muted.",
+          return `${entity("entity_id", t("Amplifier / receiver"), item.entity_id,
+            t("The media player driving this speaker. It shows sound waves while that plays. For an amplifier that only reports on/off, the speaker follows the player on its selected input: a piece named after the input (e.g. \"Apple TV\"), or plays whenever the amplifier is on and not muted."),
             "media_player.living_room_receiver")}
             ${amps.length ? `<div class="actions" style="margin:-4px 0 12px;flex-wrap:wrap">${amps.map((id) => `
               <button class="btn${id === item.entity_id ? " primary" : ""}" data-act="connect-speaker" data-entity="${escapeHtml(id)}">
                 <ha-icon icon="mdi:cable-data"></ha-icon>${escapeHtml(friendlyName(this._hass, id))}</button>`).join("")}</div>` : ""}`;
-        })() : entity("entity_id", "Entity", item.entity_id, def.light
-          ? "A light makes this lamp glow and shine. Tip: drag an entity from a room's list onto the piece."
-          : def.screen ? "The screen lights up when this is on or playing." : "Tip: drag an entity from a room's list onto the piece.")}
+        })() : entity("entity_id", t("Entity"), item.entity_id, def.light
+          ? t("A light makes this lamp glow and shine. Tip: drag an entity from a room's list onto the piece.")
+          : def.screen ? t("The screen lights up when this is on or playing.") : t("Tip: drag an entity from a room's list onto the piece."))}
         ${def.av ? this._avSection(item, def) : ""}
         ${def.surround ? this._surroundSection(item) : ""}
         ${def.robot && item.entity_id ? this._vacuumSection(item) : ""}
-        ${item.entity_id ? `<div class="field"><label>Tap action</label><select data-field="tap_action">
+        ${item.entity_id ? `<div class="field"><label>${t("Tap action")}</label><select data-field="tap_action">
             ${tapOptions(this._hass, item, item.tap_action)}
           </select></div>
           ${doubleTapField(item, this._hass)}
-          <label class="check"><input type="checkbox" data-field="show_state" ${item.show_state ? "checked" : ""}> Show state badge</label>` : ""}`}
+          <label class="check"><input type="checkbox" data-field="show_state" ${item.show_state ? "checked" : ""}> ${t("Show state badge")}</label>` : ""}`}
         <div class="actions">
-          <button class="btn" data-act="duplicate" title="Ctrl+D"><ha-icon icon="mdi:content-copy"></ha-icon>Duplicate</button>
-          <button class="btn danger" data-act="delete"><ha-icon icon="mdi:delete"></ha-icon>Delete</button>
+          <button class="btn" data-act="duplicate" title="Ctrl+D"><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button>
+          <button class="btn danger" data-act="delete"><ha-icon icon="mdi:delete"></ha-icon>${t("Delete")}</button>
         </div>`;
     } else if (floor && catalog) {
-      html += `<h3><ha-icon icon="mdi:sofa-outline"></ha-icon>Furniture</h3>
-        ${placed ? `<div class="actions"><button class="btn" data-act="edit-placed"><ha-icon icon="mdi:pencil"></ha-icon>${escapeHtml(placed.name || catalogItem(placed.type).label)}: details</button></div>` : ""}
-        <p class="muted">Drag a piece onto the plan.</p>
-        <input class="search" type="search" data-furniture-search placeholder="Search furniture…" value="${escapeHtml(this._furnitureQuery || "")}" autocomplete="off">
+      html += `<h3><ha-icon icon="mdi:sofa-outline"></ha-icon>${t("Furniture")}</h3>
+        ${placed ? `<div class="actions"><button class="btn" data-act="edit-placed"><ha-icon icon="mdi:pencil"></ha-icon>${t("{name}: details", { name: escapeHtml(placed.name || t(catalogItem(placed.type).label)) })}</button></div>` : ""}
+        <p class="muted">${t("Drag a piece onto the plan.")}</p>
+        <input class="search" type="search" data-furniture-search placeholder="${t("Search furniture…")}" value="${escapeHtml(this._furnitureQuery || "")}" autocomplete="off">
         ${sortedCategories().map((c) => {
-          // While searching: only matching pieces (name or category), their categories unfolded
+          // While searching: only matching pieces (name or category, in English or translated), their categories unfolded
           const q = (this._furnitureQuery || "").trim().toLowerCase();
           const items = Object.entries(CATALOG).filter(([k, d]) => d.cat === c
-            && (!q || `${d.label} ${d.cat} ${k.replace(/_/g, " ")}`.toLowerCase().includes(q)));
+            && (!q || `${d.label} ${t(d.label)} ${d.cat} ${t(d.cat)} ${k.replace(/_/g, " ")}`.toLowerCase().includes(q)))
+            .sort(([, a], [, b]) => t(a.label).localeCompare(t(b.label)));
           if (q && !items.length) return "";
           return `<details class="cat" data-cat="${c}" ${q || openCategories().has(c) ? "open" : ""}>
-            <summary><ha-icon icon="mdi:chevron-right"></ha-icon>${c}<span class="count">${items.length}</span></summary>
+            <summary><ha-icon icon="mdi:chevron-right"></ha-icon>${escapeHtml(t(c))}<span class="count">${items.length}</span></summary>
             <div class="catalog">${items.map(([k, d]) => `
-              <div class="tile" data-drag-furniture="${k}" title="Drag onto the plan"><ha-icon icon="${d.icon}"></ha-icon>${d.label}</div>`).join("")}
+              <div class="tile" data-drag-furniture="${k}" title="${t("Drag onto the plan")}"><ha-icon icon="${d.icon}"></ha-icon>${escapeHtml(t(d.label))}</div>`).join("")}
             </div></details>`;
         }).join("")}`;
     } else if (floor && this._tool === "marker") {
-      html += `<h3><ha-icon icon="mdi:map-marker-plus-outline"></ha-icon>Entities</h3>
-        <input class="search" type="search" data-entity-search placeholder="Search entities…" value="${escapeHtml(this._entityQuery || "")}" autocomplete="off">
+      html += `<h3><ha-icon icon="mdi:map-marker-plus-outline"></ha-icon>${t("Entities")}</h3>
+        <input class="search" type="search" data-entity-search placeholder="${t("Search entities…")}" value="${escapeHtml(this._entityQuery || "")}" autocomplete="off">
         <div class="ents" data-list="all"></div>`;
     } else if (floor) {
       const bp = floor.blueprint;
-      html += `<h3><ha-icon icon="mdi:compass-outline"></ha-icon>House</h3>
-        <div class="field"><label>North (° clockwise from the top of the plan)</label>
+      html += `<h3><ha-icon icon="mdi:compass-outline"></ha-icon>${t("House")}</h3>
+        <div class="field"><label>${t("North (° clockwise from the top of the plan)")}</label>
           <input type="number" min="0" max="359" step="1" data-doc-field="north" value="${Math.round(this._doc.north || 0)}">
-          <span class="muted">Or drag the compass in the top-right corner. Double-click it to reset.</span></div>
-        ${this._finishPicker("Exterior walls", "data-doc-field", "exterior_material", "exterior_color", WALL_MATERIALS,
-          this._doc.exterior_material, this._doc.exterior_color, "Default",
+          <span class="muted">${t("Or drag the compass in the top-right corner. Double-click it to reset.")}</span></div>
+        ${this._finishPicker(t("Exterior walls"), "data-doc-field", "exterior_material", "exterior_color", WALL_MATERIALS,
+          this._doc.exterior_material, this._doc.exterior_color, t("Default"),
           this._doc.exterior_material || this._doc.exterior_color ? wallFinish(this._doc.exterior_material, this._doc.exterior_color).color : null)}
-        <h3><ha-icon icon="mdi:layers-outline"></ha-icon>Floor</h3>
-        <div class="field"><label>Name</label><input data-floor-field="name" value="${escapeHtml(floor.name)}"></div>
+        <h3><ha-icon icon="mdi:layers-outline"></ha-icon>${t("Floor")}</h3>
+        <div class="field"><label>${t("Name")}</label><input data-floor-field="name" value="${escapeHtml(floor.name)}"></div>
         <div class="row">
-          <div class="field"><label>Level</label><input type="number" step="1" data-floor-field="level" value="${floor.level}"></div>
-          <div class="field"><label>Wall height (m)</label><input type="number" step="0.05" min="0.5" data-floor-field="wall_height" value="${floor.wall_height}"></div>
+          <div class="field"><label>${t("Level")}</label><input type="number" step="1" data-floor-field="level" value="${floor.level}"></div>
+          <div class="field"><label>${t("Wall height (m)")}</label><input type="number" step="0.05" min="0.5" data-floor-field="wall_height" value="${floor.wall_height}"></div>
         </div>
-        <div class="field"><label>New wall thickness (m)</label><input type="number" step="0.01" min="0.01" data-pref="wall_thickness" value="${this._wallThickness}"></div>
-        <p class="muted">${floor.walls.length} walls · ${floor.rooms.length} rooms · ${floor.openings.length} doors/windows · ${floor.markers.length} markers</p>
+        <div class="field"><label>${t("New wall thickness (m)")}</label><input type="number" step="0.01" min="0.01" data-pref="wall_thickness" value="${this._wallThickness}"></div>
+        <p class="muted">${t("{walls} walls · {rooms} rooms · {openings} doors/windows · {markers} markers", {
+          walls: floor.walls.length, rooms: floor.rooms.length, openings: floor.openings.length, markers: floor.markers.length })}</p>
         ${(() => {
           const dups = countDuplicateOpenings(floor);
-          return dups ? `<p class="muted"><ha-icon icon="mdi:alert-outline"></ha-icon> ${dups} door${dups === 1 ? "" : "s"}/window${dups === 1 ? "" : "s"} sit${dups === 1 ? "s" : ""} on top of another one.</p>
-            <div class="actions"><button class="btn" data-act="remove-duplicate-openings"><ha-icon icon="mdi:door-closed-cancel"></ha-icon>Remove duplicates</button></div>` : "";
+          return dups ? `<p class="muted"><ha-icon icon="mdi:alert-outline"></ha-icon> ${dups === 1 ? t("1 door/window sits on top of another one.")
+            : t("{n} doors/windows sit on top of another one.", { n: dups })}</p>
+            <div class="actions"><button class="btn" data-act="remove-duplicate-openings"><ha-icon icon="mdi:door-closed-cancel"></ha-icon>${t("Remove duplicates")}</button></div>` : "";
         })()}
-        ${(floor.roofs || []).length ? `<h4>Roofs</h4><div class="roof-list">
+        ${(floor.roofs || []).length ? `<h4>${t("Roofs")}</h4><div class="roof-list">
           ${floor.roofs.map((r, i) => `<div class="row" style="align-items:center">
             <button class="btn" style="flex:1;justify-content:flex-start" data-act="select-roof" data-id="${r.id}">
-              <ha-icon icon="mdi:home-roof"></ha-icon>${escapeHtml(r.name || `Roof ${i + 1}`)} · ${escapeHtml(ROOF_TYPES[r.type || "gable"].split(" (")[0])}</button>
-            <button class="btn danger" data-act="delete-roof" data-id="${r.id}" title="Delete this roof" aria-label="Delete this roof"><ha-icon icon="mdi:delete"></ha-icon></button>
+              <ha-icon icon="mdi:home-roof"></ha-icon>${escapeHtml(r.name || t("Roof {n}", { n: i + 1 }))} · ${escapeHtml(t(ROOF_TYPES[r.type || "gable"]).split(" (")[0])}</button>
+            <button class="btn danger" data-act="delete-roof" data-id="${r.id}" title="${t("Delete this roof")}" aria-label="${t("Delete this roof")}"><ha-icon icon="mdi:delete"></ha-icon></button>
           </div>`).join("")}</div>` : ""}
         ${this._doc.floors.length > 1 ? this._alignSection() : ""}
-        <h4>Blueprint</h4>
+        <h4>${t("Blueprint")}</h4>
         ${bp ? `
-          <div class="row">${this._bpNum("width", "Width (m)", bp.width)}${this._bpNum("x", "X (m)", bp.x)}${this._bpNum("y", "Y (m)", bp.y)}</div>
-          <div class="field"><label>Opacity</label><input type="range" min="0" max="1" step="0.05" data-bp-field="opacity" value="${bp.opacity}"></div>
-          <label class="check"><input type="checkbox" data-bp-field="show_in_view" ${bp.show_in_view ? "checked" : ""}> Show outside of edit mode</label>
+          <div class="row">${this._bpNum("width", t("Width (m)"), bp.width)}${this._bpNum("x", t("X (m)"), bp.x)}${this._bpNum("y", t("Y (m)"), bp.y)}</div>
+          <div class="field"><label>${t("Opacity")}</label><input type="range" min="0" max="1" step="0.05" data-bp-field="opacity" value="${bp.opacity}"></div>
+          <label class="check"><input type="checkbox" data-bp-field="show_in_view" ${bp.show_in_view ? "checked" : ""}> ${t("Show outside of edit mode")}</label>
           <div class="actions">
-            <button class="btn" data-act="calibrate"><ha-icon icon="mdi:ruler"></ha-icon>Calibrate scale</button>
-            <button class="btn" data-act="upload"><ha-icon icon="mdi:image-refresh"></ha-icon>Replace</button>
-            <button class="btn danger" data-act="remove-blueprint">Remove</button>
+            <button class="btn" data-act="calibrate"><ha-icon icon="mdi:ruler"></ha-icon>${t("Calibrate scale")}</button>
+            <button class="btn" data-act="upload"><ha-icon icon="mdi:image-refresh"></ha-icon>${t("Replace")}</button>
+            <button class="btn danger" data-act="remove-blueprint">${t("Remove")}</button>
           </div>`
-        : `<p class="muted">Upload a picture of your floorplan to trace over. PNG, JPG, WebP, AVIF or GIF up to 15 MB.</p>
-           <div class="actions"><button class="btn primary" data-act="upload"><ha-icon icon="mdi:image-plus"></ha-icon>Upload image</button></div>`}
+        : `<p class="muted">${t("Upload a picture of your floorplan to trace over. PNG, JPG, WebP, AVIF or GIF up to 15 MB.")}</p>
+           <div class="actions"><button class="btn primary" data-act="upload"><ha-icon icon="mdi:image-plus"></ha-icon>${t("Upload image")}</button></div>`}
         <input type="file" data-file="blueprint" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,.png,.jpg,.jpeg,.webp,.gif,.avif" hidden>
-        <h4>3D scan</h4>
-        <p class="muted">Start from a LiDAR room scan: an OBJ file from an iPhone or iPad scanning app (Apple RoomPlan, e.g. 3D Snap). It becomes a new floor with the walls, doors, windows, rooms and furniture as blocks, to check and tidy up.</p>
-        <div class="actions"><button class="btn" data-act="import-scan"><ha-icon icon="mdi:cube-scan"></ha-icon>Import scan</button></div>
+        <h4>${t("3D scan")}</h4>
+        <p class="muted">${t("Start from a LiDAR room scan: an OBJ file from an iPhone or iPad scanning app (Apple RoomPlan, e.g. 3D Snap). It becomes a new floor with the walls, doors, windows, rooms and furniture as blocks, to check and tidy up.")}</p>
+        <div class="actions"><button class="btn" data-act="import-scan"><ha-icon icon="mdi:cube-scan"></ha-icon>${t("Import scan")}</button></div>
         <input type="file" data-file="scan" accept=".obj" hidden>
-        ${this._doc.floors.length > 1 ? `<h4>Danger zone</h4><div class="actions"><button class="btn danger" data-act="delete-floor">Delete this floor</button></div>` : ""}`;
+        ${this._doc.floors.length > 1 ? `<h4>${t("Danger zone")}</h4><div class="actions"><button class="btn danger" data-act="delete-floor">${t("Delete this floor")}</button></div>` : ""}`;
     }
     this._aside.innerHTML = html;
     this._fillEntityList(this._aside.querySelector(".ents[data-list=area]"), this._roomEntities(item));
@@ -1339,14 +1361,14 @@ class FloorplanStudioPanel extends HTMLElement {
   }
 
   _areaEntitySection(room) {
-    const hint = `<p class="muted">Drag an entity onto the plan to place it. Drag a marker back onto this panel to remove it.</p>`;
+    const hint = `<p class="muted">${t("Drag an entity onto the plan to place it. Drag a marker back onto this panel to remove it.")}</p>`;
     if (!room.area_id) {
-      return `<h4>Entities</h4><p class="muted">Link an HA area above to list its entities here.</p>`;
+      return `<h4>${t("Entities")}</h4><p class="muted">${t("Link an HA area above to list its entities here.")}</p>`;
     }
     const area = this._hass.areas?.[room.area_id];
     const n = this._roomEntities(room)?.length || 0;
-    return `<h4>Entities in ${escapeHtml(area?.name || room.area_id)} (${n})</h4>
-      ${n ? hint : `<p class="muted">No entities in this area.</p>`}
+    return `<h4>${t("Entities in {area} ({n})", { area: escapeHtml(area?.name || room.area_id), n })}</h4>
+      ${n ? hint : `<p class="muted">${t("No entities in this area.")}</p>`}
       <div class="ents" data-list="area"></div>`;
   }
 
@@ -1362,15 +1384,15 @@ class FloorplanStudioPanel extends HTMLElement {
             const area = container.dataset.list === "all" ? this._hass.areas?.[areaOfEntity(this._hass, id)]?.name : "";
             const sub = [formatState(this._hass, st), area].filter(Boolean).join(" · ");
             return `<div class="ent ${placed.has(id) ? "placed" : ""}" data-drag-entity="${escapeHtml(id)}"
-                title="${placed.has(id) ? "On the plan. Click to select it, or drag to place it again." : "Drag onto the plan"}">
+                title="${placed.has(id) ? t("On the plan. Click to select it, or drag to place it again.") : t("Drag onto the plan")}">
               <span class="ico"></span>
               <span class="txt"><span class="nm">${escapeHtml(friendlyName(this._hass, id))}</span><span class="st">${escapeHtml(sub)}</span></span>
               <ha-icon class="mark" icon="${placed.has(id) ? "mdi:check-circle" : "mdi:drag"}"></ha-icon>
             </div>`;
           })
           .join("") +
-        (ids.length > shown.length ? `<p class="muted">${ids.length - shown.length} more. Refine your search.</p>` : "")
-      : `<p class="muted">No matching entities.</p>`;
+        (ids.length > shown.length ? `<p class="muted">${t("{n} more. Refine your search.", { n: ids.length - shown.length })}</p>` : "")
+      : `<p class="muted">${t("No matching entities.")}</p>`;
     container.querySelectorAll(".ent").forEach((row) => {
       const id = row.dataset.dragEntity;
       row.querySelector(".ico").appendChild(createStateIcon(this._hass, this._hass.states[id]));
@@ -1418,7 +1440,7 @@ class FloorplanStudioPanel extends HTMLElement {
     if (!this._trashEl) {
       this._trashEl = document.createElement("div");
       this._trashEl.className = "trash";
-      this._trashEl.innerHTML = `<ha-icon icon="mdi:delete-outline"></ha-icon>Drop here to remove`;
+      this._trashEl.innerHTML = `<ha-icon icon="mdi:delete-outline"></ha-icon>${t("Drop here to remove")}`;
       this._root.appendChild(this._trashEl);
     }
     const a = this._aside.getBoundingClientRect();
@@ -1438,7 +1460,7 @@ class FloorplanStudioPanel extends HTMLElement {
   _itemGhost(kind, item) {
     if (kind === "marker") return { entityId: item.entity_id };
     const def = catalogItem(item.type);
-    return { icon: def.icon, label: item.name || def.label };
+    return { icon: def.icon, label: item.name || t(def.label) };
   }
 
   _onItemDrag({ kind, item, clientX, clientY, outside }) {
@@ -1458,7 +1480,7 @@ class FloorplanStudioPanel extends HTMLElement {
     if (this._selection?.kind === kind && this._selection.id === item.id) this._selection = null;
     this._afterChange();
     const g = this._itemGhost(kind, item);
-    this._toast(`Removed ${g.label || friendlyName(this._hass, g.entityId)} from the plan`);
+    this._toast(t("Removed {name} from the plan", { name: g.label || friendlyName(this._hass, g.entityId) }));
   }
 
   /** Drag from the side panel: an entity (marker / link to furniture) or a catalog piece. */
@@ -1467,7 +1489,7 @@ class FloorplanStudioPanel extends HTMLElement {
     if (!row || e.button > 0) return;
     const entityId = row.dataset.dragEntity;
     const type = row.dataset.dragFurniture;
-    const what = entityId ? { entityId } : { icon: catalogItem(type).icon, label: catalogItem(type).label };
+    const what = entityId ? { entityId } : { icon: catalogItem(type).icon, label: t(catalogItem(type).label) };
     const start = { x: e.clientX, y: e.clientY };
     let dragging = false;
     const canDrop = () => this._view === "2d";
@@ -1488,7 +1510,7 @@ class FloorplanStudioPanel extends HTMLElement {
       }
       ev.preventDefault();
       const f = target(ev);
-      const label = f ? `Link to ${f.name || catalogItem(f.type).label}` : null;
+      const label = f ? t("Link to {name}", { name: f.name || t(catalogItem(f.type).label) }) : null;
       this._ghost(what, ev.clientX, ev.clientY, { label });
       this._plan.setDropHint(canDrop() && this._plan.containsPoint(ev.clientX, ev.clientY));
     };
@@ -1511,7 +1533,7 @@ class FloorplanStudioPanel extends HTMLElement {
           f.entity_id = entityId;
           f.tap_action = canToggle(entityId) || floodlightEntity(this._hass, entityId) ? "toggle" : "more-info";
         });
-        this._toast(`${friendlyName(this._hass, entityId)} linked to ${f.name || catalogItem(f.type).label}`);
+        this._toast(t("{entity} linked to {name}", { entity: friendlyName(this._hass, entityId), name: f.name || t(catalogItem(f.type).label) }));
         return;
       }
       const [x, y] = this._plan.clientToWorld(ev.clientX, ev.clientY, ev);
@@ -1558,51 +1580,51 @@ class FloorplanStudioPanel extends HTMLElement {
     const f = this._floor?.furniture.find((x) => x.entity_id === entityId);
     if (m) this._select({ kind: "marker", id: m.id });
     else if (f) this._select({ kind: "furniture", id: f.id });
-    else this._toast("Drag it onto the plan to place it, or onto furniture to link it.");
+    else this._toast(t("Drag it onto the plan to place it, or onto furniture to link it."));
   }
 
   /** Material dropdown + colour for a surface finish. */
   _finishPicker(title, attr, matField, colorField, defs, material, color, noneLabel, effectiveColor) {
     const options = [
       noneLabel ? `<option value="" ${!material ? "selected" : ""}>${noneLabel}</option>` : "",
-      ...Object.entries(defs).map(([k, d]) => `<option value="${k}" ${k === material ? "selected" : ""}>${d.label}</option>`),
+      ...Object.entries(defs).map(([k, d]) => `<option value="${k}" ${k === material ? "selected" : ""}>${t(d.label)}</option>`),
     ].join("");
     const showColor = !!effectiveColor;
     return `<h4>${title}</h4>
       <div class="row">
-        <div class="field"><label>Material</label><select ${attr}="${matField}">${options}</select></div>
-        ${showColor ? `<div class="field" style="max-width:110px"><label>Colour</label>
+        <div class="field"><label>${t("Material")}</label><select ${attr}="${matField}">${options}</select></div>
+        ${showColor ? `<div class="field" style="max-width:110px"><label>${t("Colour")}</label>
           <input type="color" ${attr}="${colorField}" value="${escapeHtml(effectiveColor)}"></div>` : ""}
       </div>
-      ${color ? `<div class="actions" style="margin:-4px 0 8px"><button class="btn" data-act="reset-finish" data-attr="${attr}" data-key="${colorField}">Default colour</button></div>` : ""}`;
+      ${color ? `<div class="actions" style="margin:-4px 0 8px"><button class="btn" data-act="reset-finish" data-attr="${attr}" data-key="${colorField}">${t("Default colour")}</button></div>` : ""}`;
   }
 
   _finishFields(room) {
     const floor = floorFinish(room);
     const walls = room.wall_material || room.wall_color ? wallFinish(room.wall_material, room.wall_color) : null;
-    return this._finishPicker("Floor", "data-field", "floor_material", "floor_color", FLOOR_MATERIALS,
+    return this._finishPicker(t("Floor surface"), "data-field", "floor_material", "floor_color", FLOOR_MATERIALS,
       room.floor_material && room.floor_material !== "plain" ? room.floor_material : "plain", room.floor_color, null,
       floor.material !== "plain" ? floor.color : null) +
       (floor.material !== "plain" ? `<div class="actions" style="margin:-4px 0 8px">
-        <button class="btn" data-act="rotate-floor" title="Turn the floor pattern 45°"><ha-icon icon="mdi:rotate-right"></ha-icon>
-          Rotate pattern (${Math.round(room.floor_rotation || 0)}°)</button></div>` : "") +
-      this._finishPicker("Walls (this room's side)", "data-field", "wall_material", "wall_color", WALL_MATERIALS,
-        room.wall_material, room.wall_color, "Default", walls?.color || null);
+        <button class="btn" data-act="rotate-floor" title="${t("Turn the floor pattern 45°")}"><ha-icon icon="mdi:rotate-right"></ha-icon>
+          ${t("Rotate pattern ({angle}°)", { angle: Math.round(room.floor_rotation || 0) })}</button></div>` : "") +
+      this._finishPicker(t("Walls (this room's side)"), "data-field", "wall_material", "wall_color", WALL_MATERIALS,
+        room.wall_material, room.wall_color, t("Default"), walls?.color || null);
   }
 
   _areaField(room) {
     const areas = listAreas(this._hass);
     const missing = room.area_id && !this._hass.areas?.[room.area_id];
     const lights = room.area_id ? areaEntities(this._hass, room.area_id, "light").length : 0;
-    return `<div class="field"><label>HA area</label>
+    return `<div class="field"><label>${t("HA area")}</label>
       <select data-field="area_id">
-        <option value="">— None —</option>
+        <option value="">${t("— None —")}</option>
         ${areas.map((a) => `<option value="${escapeHtml(a.area_id)}" ${a.area_id === room.area_id ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
-        ${missing ? `<option value="${escapeHtml(room.area_id)}" selected>${escapeHtml(room.area_id)} (deleted)</option>` : ""}
+        ${missing ? `<option value="${escapeHtml(room.area_id)}" selected>${t("{area} (deleted)", { area: escapeHtml(room.area_id) })}</option>` : ""}
       </select>
-      ${missing ? `<span class="warn">This area no longer exists in Home Assistant</span>` : ""}
-      ${room.area_id && !missing ? `<span class="muted">${lights} light${lights === 1 ? "" : "s"} in this area</span>` : ""}
-      ${!areas.length ? `<span class="muted">No areas yet. Create them under Settings → Areas.</span>` : ""}
+      ${missing ? `<span class="warn">${t("This area no longer exists in Home Assistant")}</span>` : ""}
+      ${room.area_id && !missing ? `<span class="muted">${lights === 1 ? t("1 light in this area") : t("{n} lights in this area", { n: lights })}</span>` : ""}
+      ${!areas.length ? `<span class="muted">${t("No areas yet. Create them under Settings → Areas.")}</span>` : ""}
     </div>`;
   }
 
@@ -1726,17 +1748,17 @@ class FloorplanStudioPanel extends HTMLElement {
     const others = this._doc.floors.filter((f) => f.id !== this._floor.id);
     const name = escapeHtml((ref || others.find((f) => f.level < this._floor.level) || others[0]).name);
     const moving = this._tool === "move-floor";
-    return `<h4>Line up with other floors</h4>
-      <label class="check"><input type="checkbox" data-pref="underlay" ${ref ? "checked" : ""}> Show the outline of ${name}</label>
+    return `<h4>${t("Line up with other floors")}</h4>
+      <label class="check"><input type="checkbox" data-pref="underlay" ${ref ? "checked" : ""}> ${t("Show the outline of {floor}", { floor: name })}</label>
       <div class="actions">
-        <button class="btn ${moving ? "primary" : ""}" data-act="move-floor"><ha-icon icon="mdi:cursor-move"></ha-icon>${moving ? "Done moving" : "Drag to move floor"}</button>
+        <button class="btn ${moving ? "primary" : ""}" data-act="move-floor"><ha-icon icon="mdi:cursor-move"></ha-icon>${moving ? t("Done moving") : t("Drag to move floor")}</button>
       </div>
       <div class="row">
-        <div class="field"><label>Move X (m)</label><input type="number" step="0.05" value="0" data-move="x"></div>
-        <div class="field"><label>Move Y (m)</label><input type="number" step="0.05" value="0" data-move="y"></div>
-        <div class="field"><label>&nbsp;</label><button class="btn" data-act="shift-floor">Move</button></div>
+        <div class="field"><label>${t("Move X (m)")}</label><input type="number" step="0.05" value="0" data-move="x"></div>
+        <div class="field"><label>${t("Move Y (m)")}</label><input type="number" step="0.05" value="0" data-move="y"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn" data-act="shift-floor">${t("Move")}</button></div>
       </div>
-      <span class="muted">Moves walls, rooms, doors, windows, markers, furniture and the blueprint together.</span>`;
+      <span class="muted">${t("Moves walls, rooms, doors, windows, markers, furniture and the blueprint together.")}</span>`;
   }
 
   _onField(e, live = false) {
@@ -1813,12 +1835,18 @@ class FloorplanStudioPanel extends HTMLElement {
         item.area_id = value || null;
         // Adopt the area's name while the room still has its default name
         const area = this._hass.areas?.[value];
-        if (area && (!item.name || /^Room \d+$/.test(item.name))) item.name = area.name;
+        const defaultName = (n) => /^Room \d+$/.test(n) || new RegExp(`^${t("Room {n}").replace("{n}", "\\d+")}$`).test(n);
+        if (area && (!item.name || defaultName(item.name))) item.name = area.name;
       } else if (["floor_material", "floor_color", "wall_material", "wall_color"].includes(field)) {
         // "" = default; a new material starts from its own default colour
         item[field] = value || null;
         if (field === "floor_material") item.floor_color = null;
         if (field === "wall_material") item.wall_color = null;
+      } else if (field === "tilt") {
+        // Directional spot: degrees from straight down (unset when straight down)
+        const tilt = Math.round(Math.min(85, Math.max(0, value)));
+        if (tilt) item.tilt = tilt;
+        else delete item.tilt;
       } else if (field === "light_strength") {
         // Slider in %, stored as a factor (unset at 100%)
         const k = Math.min(5, Math.max(0.05, value / 100));
@@ -1875,15 +1903,13 @@ class FloorplanStudioPanel extends HTMLElement {
   /** A Sonos speaker bonded to a soundbar as a rear surround: it follows the soundbar. */
   _surroundSection(item) {
     const bars = this._soundbars(item);
-    return `<label class="check"><input type="checkbox" data-field="surround" ${item.surround ? "checked" : ""}> Surround speaker of a soundbar</label>
+    return `<label class="check"><input type="checkbox" data-field="surround" ${item.surround ? "checked" : ""}> ${t("Surround speaker of a soundbar")}</label>
       ${item.surround ? `
         ${bars.length ? `<div class="actions" style="margin:4px 0 4px;flex-wrap:wrap">${bars.map((id) => `
           <button class="btn${id === item.entity_id ? " primary" : ""}" data-act="connect-speaker" data-entity="${escapeHtml(id)}">
             <ha-icon icon="mdi:surround-sound"></ha-icon>${escapeHtml(friendlyName(this._hass, id))}</button>`).join("")}</div>`
-          : `<p class="muted">Place the soundbar on this floor and link it to its media player first.</p>`}
-        <p class="muted" style="margin:4px 0 12px">Bonded surrounds have no entity of their own: this one is linked to the soundbar's player.
-          It shows sound waves while the soundbar plays and surround is on (softer for music, which the surrounds
-          play at the ambient level unless "Surround music full volume" is on).</p>` : ""}`;
+          : `<p class="muted">${t("Place the soundbar on this floor and link it to its media player first.")}</p>`}
+        <p class="muted" style="margin:4px 0 12px">${t("Bonded surrounds have no entity of their own: this one is linked to the soundbar's player. It shows sound waves while the soundbar plays and surround is on (softer for music, which the surrounds play at the ambient level unless \"Surround music full volume\" is on).")}</p>` : ""}`;
   }
 
   // ---------- AV wiring ----------
@@ -1894,44 +1920,44 @@ class FloorplanStudioPanel extends HTMLElement {
     const role = (p) => catalogItem(p.type).av;
     // "Eetkamer (Apple TV 4K)": the entity's name alone often reads like a room
     const name = (p) => {
-      const kind = catalogItem(p.type).label.split(" (")[0];
+      const kind = t(catalogItem(p.type).label).split(" (")[0];
       const own = p.name || (this._hass.states[p.entity_id] ? friendlyName(this._hass, p.entity_id) : "");
       return own && !own.toLowerCase().includes(kind.toLowerCase()) ? `${own} (${kind})` : own || kind;
     };
     const devices = (roles) => pieces.filter((p) => p !== item && p.entity_id && p.entity_id !== item.entity_id && roles.includes(role(p)));
     const options = (list, selected, none) => `<option value="">${none}</option>${list.map((p) => `
       <option value="${escapeHtml(p.entity_id)}" ${p.entity_id === selected ? "selected" : ""}>${escapeHtml(name(p))}</option>`).join("")}`;
-    const needEntity = `<p class="muted">Link this piece to its entity first, so it can be wired up.</p>`;
+    const needEntity = `<p class="muted">${t("Link this piece to its entity first, so it can be wired up.")}</p>`;
     const output = (targets) => {
       const target = pieces.find((p) => p !== item && p.entity_id === item.connected_to);
       const inputs = target && role(target) === "receiver" ? this._hass.states[target.entity_id]?.attributes?.source_list || [] : [];
-      return `<h4>Output</h4>
-        <div class="field"><label>Plugged into</label><select data-field="connected_to">${options(devices(targets), item.connected_to, "Not connected")}
+      return `<h4>${t("Output")}</h4>
+        <div class="field"><label>${t("Plugged into")}</label><select data-field="connected_to">${options(devices(targets), item.connected_to, t("Not connected"))}
           ${item.connected_to && !target ? `<option value="${escapeHtml(item.connected_to)}" selected>${escapeHtml(item.connected_to)}</option>` : ""}</select></div>
-        ${target && role(target) === "receiver" ? `<div class="field"><label>On input</label><select data-field="connected_input">
-          <option value="">${inputs.length ? "Choose the input…" : "Inputs unknown"}</option>
+        ${target && role(target) === "receiver" ? `<div class="field"><label>${t("On input")}</label><select data-field="connected_input">
+          <option value="">${inputs.length ? t("Choose the input…") : t("Inputs unknown")}</option>
           ${[...new Set([...inputs, ...(item.connected_input ? [item.connected_input] : [])])].map((n) => `
             <option value="${escapeHtml(n)}" ${n === item.connected_input ? "selected" : ""}>${escapeHtml(n)}</option>`).join("")}
         </select></div>` : ""}`;
     };
-    if (def.av === "source") return item.entity_id ? output(["receiver", "display"]) : `<h4>Output</h4>${needEntity}`;
+    if (def.av === "source") return item.entity_id ? output(["receiver", "display"]) : `<h4>${t("Output")}</h4>${needEntity}`;
     if (def.av === "receiver") {
-      if (!item.entity_id) return `<h4>Inputs</h4>${needEntity}`;
+      if (!item.entity_id) return `<h4>${t("Inputs")}</h4>${needEntity}`;
       const inputs = this._hass.states[item.entity_id]?.attributes?.source_list || [];
       const sources = devices(["source"]);
       const on = (n) => pieces.find((p) => p.connected_to === item.entity_id && p.connected_input === n)?.entity_id;
-      return `<h4>Inputs</h4>
+      return `<h4>${t("Inputs")}</h4>
         ${inputs.length ? inputs.map((n) => `<div class="field"><label>${escapeHtml(n)}</label>
           <select data-av-input="${escapeHtml(n)}">${options(sources, on(n), "—")}</select></div>`).join("")
-          : `<p class="muted">This receiver doesn't list its inputs.</p>`}
+          : `<p class="muted">${t("This receiver doesn't list its inputs.")}</p>`}
         ${output(["display"])}`;
     }
     // Display: one input
-    if (!item.entity_id) return `<h4>Input</h4>${needEntity}`;
+    if (!item.entity_id) return `<h4>${t("Input")}</h4>${needEntity}`;
     const feed = displayFeed(item, pieces);
-    return `<h4>Input</h4>
-      <div class="field"><label>Comes from</label><select data-av-from>${options(devices(["receiver", "source"]), feed?.entity_id, "Nothing connected")}</select>
-      <span class="muted">The screen shows what's playing on this device (through a receiver: on its selected input).</span></div>`;
+    return `<h4>${t("Input")}</h4>
+      <div class="field"><label>${t("Comes from")}</label><select data-av-from>${options(devices(["receiver", "source"]), feed?.entity_id, t("Nothing connected"))}</select>
+      <span class="muted">${t("The screen shows what's playing on this device (through a receiver: on its selected input).")}</span></div>`;
   }
 
   /** A robot vacuum's rooms, each matched to a room of this floor (where it drives while cleaning that room). */
@@ -1939,19 +1965,19 @@ class FloorplanStudioPanel extends HTMLElement {
     const rooms = vacuumRooms(this._hass, item.entity_id);
     const sensor = currentRoomSensor(this._hass, item.entity_id);
     const planRooms = this._floor.rooms;
-    const label = (r) => r.name || this._hass.areas?.[r.area_id]?.name || r.area_id || "Unnamed room";
+    const label = (r) => r.name || this._hass.areas?.[r.area_id]?.name || r.area_id || t("Unnamed room");
     if (!rooms.length || !sensor) {
-      return `<h4>Rooms</h4><p class="muted">This vacuum doesn't report its rooms or the room it's in, so it can't be shown cleaning a room.</p>`;
+      return `<h4>${t("Rooms")}</h4><p class="muted">${t("This vacuum doesn't report its rooms or the room it's in, so it can't be shown cleaning a room.")}</p>`;
     }
-    return `<h4>Rooms</h4>
-      <p class="muted">While cleaning, the robot drives through the room it's in (from ${escapeHtml(friendlyName(this._hass, sensor))}). Match the vacuum's rooms to the plan.</p>
+    return `<h4>${t("Rooms")}</h4>
+      <p class="muted">${t("While cleaning, the robot drives through the room it's in (from {sensor}). Match the vacuum's rooms to the plan.", { sensor: escapeHtml(friendlyName(this._hass, sensor)) })}</p>
       ${rooms.map((vr) => {
         const mapped = item.vacuum_rooms?.[vr.id];
         // What it would pick by name when not set
         const auto = !mapped && cleaningRoom({ ...this._hass, states: { ...this._hass.states,
           [sensor]: { state: vr.name, attributes: { room_id: vr.id, room_name: vr.name } } } }, { ...item, vacuum_rooms: {} }, planRooms);
         return `<div class="field"><label>${escapeHtml(vr.name)}</label><select data-vac-room="${escapeHtml(vr.id)}">
-          <option value="">${auto ? `Automatic: ${escapeHtml(label(auto))}` : "Not on this floor"}</option>
+          <option value="">${auto ? t("Automatic: {room}", { room: escapeHtml(label(auto)) }) : t("Not on this floor")}</option>
           ${[...planRooms].filter((r) => !isOutdoor(r)).sort((a, b) => label(a).localeCompare(label(b))).map((r) => `
             <option value="${r.id}" ${r.id === mapped ? "selected" : ""}>${escapeHtml(label(r))}</option>`).join("")}
         </select></div>`;
@@ -2021,15 +2047,15 @@ class FloorplanStudioPanel extends HTMLElement {
     el.className = "campop";
     el.innerHTML = `<div class="hd"><span class="dot"></span>
         <span class="t"></span>
-        <button data-act="light" title="Floodlight on/off" hidden>Light</button>
-        <button data-act="live" title="Show the live view" hidden>Live</button>
-        <button data-act="open" title="Open camera">Open</button>
-        <button data-act="close" title="Close" aria-label="Close">✕</button></div>
+        <button data-act="light" title="${t("Floodlight on/off")}" hidden>${t("Light")}</button>
+        <button data-act="live" title="${t("Show the live view")}" hidden>${t("Live")}</button>
+        <button data-act="open" title="${t("Open camera")}">${t("Open")}</button>
+        <button data-act="close" title="${t("Close")}" aria-label="${t("Close")}">✕</button></div>
       <div class="view"></div>`;
     const title = el.querySelector(".t");
     title.textContent = name;
     const sub = document.createElement("small");
-    sub.textContent = `Person detected · ${since}`;
+    sub.textContent = t("Person detected · {time}", { time: since });
     title.appendChild(sub);
     const view = el.querySelector(".view");
     const openedAt = Date.now();
@@ -2083,14 +2109,14 @@ class FloorplanStudioPanel extends HTMLElement {
       lightBtn.hidden = !flood;
       const on = flood && hass.states[flood]?.state === "on";
       lightBtn.classList.toggle("on", !!on);
-      lightBtn.textContent = on ? "Light off" : "Light on";
+      lightBtn.textContent = on ? t("Light off") : t("Light on");
     };
     syncLight(this._hass);
     wrap.prepend(el);
     popups.set(entityId, {
       update: (detecting) => {
         el.classList.toggle("clear", !detecting);
-        sub.textContent = detecting ? `Person detected · ${since}` : `Person seen at ${since}`;
+        sub.textContent = detecting ? t("Person detected · {time}", { time: since }) : t("Person seen at {time}", { time: since });
         clearTimeout(closeTimer);
         if (!detecting) closeTimer = setTimeout(close, 30000);
       },
@@ -2111,7 +2137,7 @@ class FloorplanStudioPanel extends HTMLElement {
   _cameraEventPicture(imageId, since) {
     const el = document.createElement("div");
     el.className = "event-pic";
-    el.innerHTML = `<img alt="" hidden><span class="when"></span><span class="wait">Waiting for the camera's picture…</span>`;
+    el.innerHTML = `<img alt="" hidden><span class="when"></span><span class="wait">${t("Waiting for the camera's picture…")}</span>`;
     const img = el.querySelector("img");
     const when = el.querySelector(".when");
     const wait = el.querySelector(".wait");
@@ -2132,7 +2158,7 @@ class FloorplanStudioPanel extends HTMLElement {
       img.hidden = false;
       img.alt = friendlyName(hass, imageId);
       wait.hidden = true;
-      when.textContent = fresh ? `Picture ${time(taken)}` : `Last picture ${time(taken)} (no new one yet)`;
+      when.textContent = fresh ? t("Picture {time}", { time: time(taken) }) : t("Last picture {time} (no new one yet)", { time: time(taken) });
       el.classList.toggle("old", !fresh);
     };
     // No picture of this detection after 20 s: show the latest one, clearly marked
@@ -2157,7 +2183,7 @@ class FloorplanStudioPanel extends HTMLElement {
     if (this.shadowRoot.querySelector(".update-notice")) return;
     const el = document.createElement("div");
     el.className = "toast update-notice";
-    el.innerHTML = `Floorplan Studio was updated. <button class="btn primary" style="margin-left:10px">Reload</button>`;
+    el.innerHTML = `${t("Floorplan Studio was updated.")} <button class="btn primary" style="margin-left:10px">${t("Reload")}</button>`;
     el.querySelector("button").addEventListener("click", async () => {
       await this._saveNow?.();
       location.reload();
@@ -2177,9 +2203,9 @@ class FloorplanStudioPanel extends HTMLElement {
   }
 }
 
-/** Furniture categories A–Z, with the catch-all "Other" last. */
+/** Furniture categories A–Z (by their name in the user's language), with the catch-all "Other" last. */
 const sortedCategories = () =>
-  [...CATEGORIES].sort((a, b) => (a === "Other") - (b === "Other") || a.localeCompare(b));
+  [...CATEGORIES].sort((a, b) => (a === "Other") - (b === "Other") || t(a).localeCompare(t(b)));
 
 /** Catalog categories the user has unfolded (remembered per browser). */
 function openCategories() {
@@ -2192,9 +2218,9 @@ function openCategories() {
 
 /** Labels for an item's actions; on a camera with a floodlight, "toggle" switches the light. */
 function actionLabel(hass, item, action) {
-  if (action === "toggle" && floodlightEntity(hass, item.entity_id)) return "Toggle floodlight";
-  if (action === "more-info" && domainOf(item.entity_id) === "camera") return "Open live view";
-  return { ...DOUBLE_TAP_ACTIONS, "more-info": "Open more-info" }[action];
+  if (action === "toggle" && floodlightEntity(hass, item.entity_id)) return t("Toggle floodlight");
+  if (action === "more-info" && domainOf(item.entity_id) === "camera") return t("Open live view");
+  return t({ ...DOUBLE_TAP_ACTIONS, "more-info": "Open more-info" }[action]);
 }
 
 function tapOptions(hass, item, current) {
@@ -2205,7 +2231,7 @@ function tapOptions(hass, item, current) {
 /** Inspector dropdown for what a double-tap on a piece or marker does. */
 function doubleTapField(item, hass) {
   const current = doubleTapAction(item);
-  return `<div class="field"><label>Double-tap action</label><select data-field="double_tap_action">
+  return `<div class="field"><label>${t("Double-tap action")}</label><select data-field="double_tap_action">
     ${Object.keys(DOUBLE_TAP_ACTIONS).map((a) => `<option value="${a}" ${current === a ? "selected" : ""}>${actionLabel(hass, item, a)}</option>`).join("")}
   </select></div>`;
 }

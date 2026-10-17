@@ -1,6 +1,7 @@
 // 3D dollhouse view of all floors (three.js + OrbitControls).
 import * as THREE from "./vendor/three.module.min.js";
 import { OrbitControls } from "./vendor/OrbitControls.js";
+import { currentLanguage, t } from "./i18n.js";
 import {
   soundArea,
   COMPASS_STYLE,
@@ -41,7 +42,7 @@ import {
 } from "./model.js";
 
 const HOT = new THREE.Color("#ff5a2c"); // a heating radiator warms up towards this
-import { baseHeight, beamHalfAngle, buildFurniture3D, catalogItem, lightAnchor, pieceSounding, toWorld, tvSource } from "./furniture.js";
+import { baseHeight, beamHalfAngle, buildFurniture3D, catalogItem, lightAnchor, lightDirection, pieceSounding, toWorld, tvSource } from "./furniture.js";
 import { ROOF_MATERIALS, finishMaterial, floorFinish, isOutdoor, roofFinish, wallFinish } from "./materials.js";
 import { roofGeometry } from "./roof.js";
 import { createArtwork, createDeviceDisplay, createTvScreen } from "./tvscreen.js";
@@ -301,20 +302,21 @@ export class FpsView3D extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>
       <div class="overlay"></div>
-      <div class="compass" title="Compass"></div>
+      <div class="compass"></div>
       <div class="hud">
-        <button data-act="reset" title="Reset camera">Reset view</button>
-        <button data-act="top" title="Look from above">Top</button>
-        <button data-act="low" aria-pressed="false" title="Lower the walls to look inside">Low walls</button>
-        <button data-act="all" aria-pressed="false" title="Show floors above the selected one">All floors</button>
-        <button data-act="roofs" aria-pressed="${readPref("roofs", "1") === "1"}" title="Show or hide the roofs">Roofs</button>
-        <label class="roof-op" title="How solid the roofs are: make them see-through to see and tap what's underneath">
+        <button data-act="reset"></button>
+        <button data-act="top"></button>
+        <button data-act="low" aria-pressed="false"></button>
+        <button data-act="all" aria-pressed="false"></button>
+        <button data-act="roofs" aria-pressed="${readPref("roofs", "1") === "1"}"></button>
+        <label class="roof-op">
           <input type="range" min="0" max="100" step="5" data-roof-opacity value="${Math.round(parseFloat(readPref("roofOpacity", "1")) * 100)}"></label>
       </div>
-      <div class="hint">Drag: rotate · Shift/right-drag: pan · Scroll/pinch: zoom</div>`;
+      <div class="hint"></div>`;
     this._overlay = this.shadowRoot.querySelector(".overlay");
     this._compass = this.shadowRoot.querySelector(".compass");
     this.north = 0;
+    this._localizeHud();
     this.lowWalls = false;
     this.allFloors = false;
     this.showRoofs = readPref("roofs", "1") === "1";
@@ -460,7 +462,29 @@ export class FpsView3D extends HTMLElement {
     this._ro.observe(this);
   }
 
+  /** Toolbar texts in the current language (built once, so redone when it changes). */
+  _localizeHud() {
+    if (this._hudLanguage === currentLanguage()) return;
+    this._hudLanguage = currentLanguage();
+    const root = this.shadowRoot;
+    const set = (sel, title, text) => {
+      const el = root.querySelector(sel);
+      if (!el) return;
+      if (title) el.title = t(title);
+      if (text) el.textContent = t(text);
+    };
+    set(".compass", "Compass");
+    set('[data-act="reset"]', "Reset camera", "Reset view");
+    set('[data-act="top"]', "Look from above", "Top");
+    set('[data-act="low"]', "Lower the walls to look inside", "Low walls");
+    set('[data-act="all"]', "Show floors above the selected one", "All floors");
+    set('[data-act="roofs"]', "Show or hide the roofs", "Roofs");
+    set(".roof-op", "How solid the roofs are: make them see-through to see and tap what's underneath");
+    set(".hint", null, "Drag: rotate · Shift/right-drag: pan · Scroll/pinch: zoom");
+  }
+
   set hass(hass) {
+    this._localizeHud();
     const prev = this._hass;
     this._hass = hass;
     if (!prev || prev.states !== hass.states) this._applyStates();
@@ -468,6 +492,7 @@ export class FpsView3D extends HTMLElement {
 
   /** props: { doc, docVersion, floorId, blueprintUrls: {imageId: {url, aspect}} } */
   update(props) {
+    this._localizeHud();
     const floorChanged = props.floorId !== undefined && props.floorId !== this.floorId;
     const sunKey = props.sun && JSON.stringify(props.sun);
     const dimChanged = props.dimLights !== undefined && !!props.dimLights !== !!this.dimLights;
@@ -542,8 +567,9 @@ export class FpsView3D extends HTMLElement {
   _renderCompass() {
     const azimuth = (this._controls.getAzimuthalAngle() * 180) / Math.PI;
     const rotation = Math.round(this.north + azimuth);
-    if (this._compassRotation === rotation) return;
-    this._compassRotation = rotation;
+    const key = `${rotation}|${currentLanguage()}`; // the letters are translated
+    if (this._compassRotation === key) return;
+    this._compassRotation = key;
     this._compass.innerHTML = compassSvg(rotation);
   }
 
@@ -853,11 +879,13 @@ export class FpsView3D extends HTMLElement {
           // lamp's arm, a ceiling spot), shining down, or up for uplighters
           const [x, y, z] = lightAnchor(f, floor.wall_height);
           const l = catalogItem(f.type).light || {};
-          // A lamp aimed sideways (a Hue Play at the wall) turns its light with the piece
-          const aim = l.aim && [...toWorld({ ...f, x: 0, y: 0 }, [0, l.aim[0]]), l.aim[1]];
+          // A lamp aimed sideways (a Hue Play at the wall) turns its light with the piece;
+          // a directional spot shines where it's tilted to (its beam follows)
+          const tilted = lightDirection(f);
+          const aim = tilted || (l.aim && [...toWorld({ ...f, x: 0, y: 0 }, [0, l.aim[0]]), l.aim[1]]);
           this._addLamp(g, { ...f, x, y }, {
-            top: Math.max(0.1, z - drop - 0.02), angle: beamHalfAngle(f), beam: !!l.beam && !l.up && !aim, bulb: false, up: !!l.up,
-            aim, soft: !!l.soft, walls: floor.walls,
+            top: Math.max(0.1, z - drop - (tilted ? 0 : 0.02)), angle: beamHalfAngle(f), beam: !!l.beam && !l.up && (!aim || !!tilted), bulb: false, up: !!l.up,
+            aim, soft: !!l.soft, walls: floor.walls, lens: (l.lens ?? 0) * Math.min(f.w, f.d),
           });
         }
         const flood = catalogItem(f.type).floodlight;
@@ -1041,7 +1069,7 @@ export class FpsView3D extends HTMLElement {
     this.requestRender();
   }
 
-  _addLamp(group, marker, { top, angle, beam = true, bulb: withBulb = true, walls = [], up = false, aim = null, soft = false }) {
+  _addLamp(group, marker, { top, angle, beam = true, bulb: withBulb = true, walls = [], up = false, aim = null, soft = false, lens = 0 }) {
     const y = group.position.y; // floor elevation; pooled lights live in world space
     // aim: [plan x, plan y, up] direction; otherwise straight down, or up for uplighters
     const dir = aim ? new THREE.Vector3(aim[0], aim[2], aim[1]).normalize().multiplyScalar(5) : new THREE.Vector3(0, up ? 5 : -top, 0);
@@ -1056,14 +1084,21 @@ export class FpsView3D extends HTMLElement {
     let cone = null;
     let coneMat = null;
     if (beam) {
-      // Beam: open cone from the lamp to the floor
-      const radius = Math.tan(angle * 0.8) * top;
-      const coneGeo = new THREE.ConeGeometry(radius, top, 40, 1, true);
-      coneGeo.translate(0, -top / 2, 0); // apex at the lamp
+      // Beam: open cone from the lamp to the floor (along its aim, for a tilted spot). A spot's
+      // beam fills its lens: the cone's tip lies inside the spot, as far behind the lens as
+      // makes it exactly the lens wide there (the opaque body hides that part)
+      const unit = aim ? dir.clone().normalize() : new THREE.Vector3(0, -1, 0);
+      const down = Math.max(0.15, -unit.y);
+      const len = Math.min(top / down, light.distance);
+      const back = lens > 0 ? lens / Math.tan(angle * 0.8) : 0;
+      const radius = Math.tan(angle * 0.8) * (len + back);
+      const coneGeo = new THREE.ConeGeometry(radius, len + back, 40, 1, true);
+      coneGeo.translate(0, -(len + back) / 2, 0); // apex at the tip
       coneMat = beamMaterial();
-      coneMat.clippingPlanes = this._wallClipPlanes(marker, walls, radius);
+      coneMat.clippingPlanes = this._wallClipPlanes(marker, walls, radius + len * Math.sqrt(Math.max(0, 1 - down * down)));
       cone = new THREE.Mesh(coneGeo, coneMat);
-      cone.position.set(marker.x, top, marker.y);
+      cone.position.set(marker.x - unit.x * back, top - unit.y * back, marker.y - unit.z * back);
+      if (aim) cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), unit);
       cone.renderOrder = 10;
       group.add(cone);
     }

@@ -153,6 +153,8 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("show_state", default=False): bool,
         # Spot lights: full beam angle in degrees (unset: the catalog default)
         vol.Optional("beam_angle"): vol.Any(None, vol.All(_num, vol.Range(5, 170))),
+        # Directional spots: degrees from straight down (unset: straight down)
+        vol.Optional("tilt"): vol.Any(None, vol.All(_num, vol.Range(0, 90))),
         # Lamps: how much light it casts in the views (factor; unset = 1)
         vol.Optional("light_strength"): vol.Any(None, vol.All(_num, vol.Range(0.05, 5))),
         # AV sources (Apple TV, console, TV): the amplifier/receiver they're plugged

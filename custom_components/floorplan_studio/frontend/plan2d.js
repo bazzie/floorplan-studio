@@ -1,4 +1,5 @@
 // 2D floorplan view + editor (SVG world layer with an HTML overlay for icons).
+import { currentLanguage, t } from "./i18n.js";
 import {
   COMPASS_STYLE,
   PLAYING_STYLE,
@@ -54,6 +55,7 @@ import {
   furnitureSvg,
   beamHalfAngle,
   lightAnchor,
+  tiltOf,
   toLocal,
   toWorld,
   pieceSounding,
@@ -239,6 +241,17 @@ ${PLAYING_STYLE}
   color:var(--secondary-text-color); pointer-events:none; text-align:center; padding:16px; }
 `;
 
+/** Distance along a ray (origin, unit direction) to segment ab, or null when it misses. */
+export function rayHitsSegment(o, d, a, b) {
+  const e = [b[0] - a[0], b[1] - a[1]];
+  const den = d[0] * e[1] - d[1] * e[0];
+  if (Math.abs(den) < 1e-9) return null;
+  const w = [a[0] - o[0], a[1] - o[1]];
+  const t = (w[0] * e[1] - w[1] * e[0]) / den; // along the ray
+  const u = (w[0] * d[1] - w[1] * d[0]) / den; // along the segment
+  return t > 0 && u >= 0 && u <= 1 ? t : null;
+}
+
 export class FpsPlan2D extends HTMLElement {
   constructor() {
     super();
@@ -250,13 +263,13 @@ export class FpsPlan2D extends HTMLElement {
       <div class="compass"></div>
       <div class="empty" hidden></div>
       <div class="hud">
-        <button data-zoom="in" title="Zoom in">+</button>
-        <button data-zoom="out" title="Zoom out">−</button>
-        <button data-zoom="fit" title="Fit to screen">⤢</button>
+        <button data-zoom="in">+</button>
+        <button data-zoom="out">−</button>
+        <button data-zoom="fit">⤢</button>
         <span class="grid-ctl" hidden>
-          Grid
-          <select title="Grid size">${GRID_SIZES.map((g) => `<option value="${g}">${g < 1 ? `${Math.round(g * 100)} cm` : `${g} m`}</option>`).join("")}</select>
-          <button data-snap title="Snap to grid (hold Alt to disable temporarily)">Snap</button>
+          <span data-text="Grid"></span>
+          <select>${GRID_SIZES.map((g) => `<option value="${g}">${g < 1 ? `${Math.round(g * 100)} cm` : `${g} m`}</option>`).join("")}</select>
+          <button data-snap></button>
         </span>
         <span class="status"></span>
       </div>`;
@@ -297,7 +310,8 @@ export class FpsPlan2D extends HTMLElement {
 
     this._gridCtl = this.shadowRoot.querySelector(".grid-ctl");
     this._gridSelect = this._gridCtl.querySelector("select");
-    this._snapBtn = this._gridCtl.querySelector("button");
+    this._snapBtn = this._gridCtl.querySelector("button[data-snap]");
+    this._localizeHud();
     this._gridSelect.addEventListener("change", () => {
       this.gridSize = parseFloat(this._gridSelect.value);
       writePref("grid", String(this.gridSize));
@@ -402,15 +416,35 @@ export class FpsPlan2D extends HTMLElement {
     });
   }
 
+  /** Toolbar texts in the current language (built once, so redone when it changes). */
+  _localizeHud() {
+    if (this._hudLanguage === currentLanguage()) return;
+    this._hudLanguage = currentLanguage();
+    const root = this.shadowRoot;
+    const set = (sel, title, text) => {
+      const el = root.querySelector(sel);
+      if (!el) return;
+      if (title) el.title = t(title);
+      if (text) el.textContent = t(text);
+    };
+    set('[data-zoom="in"]', "Zoom in");
+    set('[data-zoom="out"]', "Zoom out");
+    set('[data-zoom="fit"]', "Fit to screen");
+    set('.grid-ctl [data-text="Grid"]', null, "Grid");
+    set(".grid-ctl select", "Grid size");
+    set("[data-snap]", "Snap to grid (hold Alt to disable temporarily)", "Snap");
+  }
+
   _renderCompass() {
-    const key = `${this.north}|${this.editing}`;
+    this._localizeHud();
+    const key = `${this.north}|${this.editing}|${currentLanguage()}`;
     if (this._compassKey === key) return;
     this._compassKey = key;
     this._compass.innerHTML = compassSvg(this.north);
     this._compass.classList.toggle("interactive", this.editing);
     this._compass.title = this.editing
-      ? `North: ${Math.round(this.north)}°. Drag to rotate (Alt for 1° steps), double-click to reset.`
-      : `North: ${Math.round(this.north)}°`;
+      ? t("North: {deg}°. Drag to rotate (Alt for 1° steps), double-click to reset.", { deg: Math.round(this.north) })
+      : t("North: {deg}°", { deg: Math.round(this.north) });
   }
 
   disconnectedCallback() {
@@ -995,7 +1029,7 @@ export class FpsPlan2D extends HTMLElement {
       case "drag-floor": {
         const [dx, dy] = this._floorDelta(a, p, e);
         shiftFloor(this.floor, dx, dy, a.orig);
-        this._status.textContent = `Moved ${dx.toFixed(2)}, ${dy.toFixed(2)} m`;
+        this._status.textContent = t("Moved {dx}, {dy} m", { dx: dx.toFixed(2), dy: dy.toFixed(2) });
         this._changed();
         break;
       }
@@ -1134,9 +1168,9 @@ export class FpsPlan2D extends HTMLElement {
     } else if (d?.tool === "room" && d.points.length >= 3) {
       this._beforeChange();
       const r = d.outdoor
-        ? { id: uid(), name: `Garden ${this.floor.rooms.filter(isOutdoor).length + 1}`, points: d.points,
+        ? { id: uid(), name: t("Garden {n}", { n: this.floor.rooms.filter(isOutdoor).length + 1 }), points: d.points,
           color: "#7fae5a", floor_material: "grass", area_id: null, entity_id: null, sensor_entity_id: null }
-        : { id: uid(), name: `Room ${this.floor.rooms.length + 1}`, points: d.points,
+        : { id: uid(), name: t("Room {n}", { n: this.floor.rooms.length + 1 }), points: d.points,
           color: "#8ab4f8", area_id: null, entity_id: null, sensor_entity_id: null };
       this.floor.rooms.push(r);
       this._changed();
@@ -1251,8 +1285,21 @@ export class FpsPlan2D extends HTMLElement {
         const k = Math.tan(Math.min(1.45, beamHalfAngle(m))) / Math.tan(Math.min(1.45, def));
         radius = Math.min(4, Math.max(0.25, radius * k));
       }
-      // Furniture lamps glow from their bulb (e.g. the end of an arc lamp's arm)
-      const [gx, gy] = m.type && !light.screen ? lightAnchor(m) : [m.x, m.y];
+      // Furniture lamps glow from their bulb (e.g. the end of an arc lamp's arm); a tilted
+      // spot's pool lies where it points, as far out as its height and tilt make it
+      let [gx, gy] = m.type && !light.screen ? lightAnchor(m, this.floor.wall_height) : [m.x, m.y];
+      const tilt = m.type && !light.screen ? tiltOf(m) : 0;
+      if (tilt) {
+        const a = ((m.rotation || 0) * Math.PI) / 180;
+        const dir = [-Math.sin(a), Math.cos(a)];
+        // ...but no further than the first wall it shines at
+        let reach = Math.min(4, lightAnchor(m, this.floor.wall_height)[2] * Math.tan(tilt));
+        for (const w of this.floor.walls) {
+          const hit = rayHitsSegment([gx, gy], dir, w.a, w.b);
+          if (hit !== null) reach = Math.min(reach, Math.max(0, hit - w.thickness / 2 - 0.05));
+        }
+        [gx, gy] = [gx + dir[0] * reach, gy + dir[1] * reach];
+      }
       const room = this._hitRoom([gx, gy]);
       if (room && !light.screen) litRooms.add(room.id);
       const gid = `glow-${m.id}`;
@@ -1388,9 +1435,17 @@ export class FpsPlan2D extends HTMLElement {
       }
       // Washing machine or dryer running: its drum turning, with the programme's progress around it
       const drum = def.laundry && f.entity_id && !this.editing ? this._laundrySvg(f, def) : "";
+      // A tilted spot: an arrow to where it points (longer the more it's tilted)
+      const aim = def.tilt && tiltOf(f) ? (() => {
+        const r = Math.max(f.w, f.d) / 2;
+        const len = r + px(8) + px(14) * Math.sin(tiltOf(f));
+        const hw = px(4);
+        return `<path class="spot-aim" d="M0,${r} L0,${len - hw} M${-hw},${len - 2 * hw} L0,${len} L${hw},${len - 2 * hw}"
+          fill="none" stroke="#f0a020" stroke-width="${px(2)}" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"/>`;
+      })() : "";
       parts.push(`<g class="${cls.join(" ")}" transform="translate(${f.x} ${f.y}) rotate(${f.rotation || 0})" stroke-width="${px(1)}"${def.robot && f.entity_id ? ` data-robot="${f.id}"` : ""}>
         ${ambi}${furnitureSvg(f, { activeScreen: on && def.screen, glowColor: light && def.light ? light.color : null,
-          tvPlaying: on && !!def.screenLight && st?.state !== "paused", heat: def.heater && on ? heatLevel(st) || 1 : 0, lampLit: !!flood })}${drum}
+          tvPlaying: on && !!def.screenLight && st?.state !== "paused", heat: def.heater && on ? heatLevel(st) || 1 : 0, lampLit: !!flood })}${drum}${aim}
         <rect class="outline" x="${-f.w / 2}" y="${-f.d / 2}" width="${f.w}" height="${f.d}" stroke-width="${px(def.ceiling ? 1.2 : 2)}"
           ${def.ceiling ? `stroke-dasharray="${px(4)} ${px(3)}"` : ""}/>
       </g>`);
@@ -1588,7 +1643,7 @@ export class FpsPlan2D extends HTMLElement {
 
     const empty = !floor.walls.length && !floor.rooms.length && !floor.markers.length && !this._furniture.length && !bp;
     this._empty.hidden = !empty || this.editing;
-    const emptyText = "This floor is empty. Click Edit to start drawing.";
+    const emptyText = t("This floor is empty. Click Edit to start drawing.");
     if (this._empty.textContent !== emptyText) this._empty.textContent = emptyText;
 
     this._renderOverlay(states);
@@ -1775,7 +1830,7 @@ export class FpsPlan2D extends HTMLElement {
       el.classList.toggle("missing", !st);
       el.classList.toggle("sel", sel?.kind === "marker" && sel.id === m.id);
       el.style.setProperty("--fps-marker-active", on ? activeColor(st, "var(--fps-active)") : "");
-      el.title = st?.attributes?.friendly_name || m.entity_id || "No entity selected";
+      el.title = st?.attributes?.friendly_name || m.entity_id || t("No entity selected");
       const stateEl = el.querySelector(".state");
       stateEl.hidden = !m.show_state || !st;
       if (m.show_state && st) stateEl.textContent = formatState(hass, st);

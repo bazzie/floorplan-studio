@@ -97,3 +97,7 @@ The sun button in the header switches between **Auto**, **Day** and **Night**. E
 - **Floorplan**: `.storage/floorplan_studio`, edited over the websocket API (`floorplan_studio/get`, `/save`, `/subscribe`). Other open browsers update live.
 - **Blueprint images**: `<config>/floorplan_studio/`, served only to logged-in users. PNG, JPEG, WebP, AVIF and GIF up to 15 MB are accepted, recognised by their contents rather than the file name; SVG is refused because it can contain scripts.
 
+## Changelog
+
+What changed in each version: [CHANGELOG.md](CHANGELOG.md) and the [releases](https://github.com/bazzie/floorplan-studio/releases).
+

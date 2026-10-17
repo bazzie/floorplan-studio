@@ -13,6 +13,7 @@
 //   - furniture: whatever else stands on the floor, plus closed boxes (wall cabinets)
 // Floating text labels some apps add (category names) match none of these and are skipped.
 
+import { t } from "./i18n.js";
 import { dist, newFloor, uid } from "./model.js";
 import { newFurniture } from "./furniture.js";
 
@@ -296,7 +297,7 @@ export function scanToFloor(scan, { name = "Scan", level = 0 } = {}) {
   if (floorY === null) {
     // No slab: the level most tall pieces start at
     const tall = parts.filter((p) => p.hi - p.lo > MIN_WALL_HEIGHT).map((p) => Math.round(p.lo * 50) / 50);
-    if (!tall.length) throw new Error("No walls found in this file. Is it a room scan (RoomPlan OBJ)?");
+    if (!tall.length) throw new Error(t("No walls found in this file. Is it a room scan (RoomPlan OBJ)?"));
     const freq = new Map();
     tall.forEach((y) => freq.set(y, (freq.get(y) || 0) + 1));
     floorY = Math.min(...tall.filter((y) => freq.get(y) === Math.max(...freq.values())));
@@ -329,7 +330,7 @@ export function scanToFloor(scan, { name = "Scan", level = 0 } = {}) {
   const named = (p, re) => re.test(p.g.material || "") || re.test(p.g.name);
   const doorish = thin.filter((p) => holder(p, thin) || inGap(p, thin) || named(p, /door|opening/i));
   const wallParts = thin.filter((p) => !doorish.includes(p));
-  if (!wallParts.length) throw new Error("No walls found in this file. Is it a room scan (RoomPlan OBJ)?");
+  if (!wallParts.length) throw new Error(t("No walls found in this file. Is it a room scan (RoomPlan OBJ)?"));
 
   // Wall centre lines
   let walls = [];
@@ -453,7 +454,7 @@ export function scanToFloor(scan, { name = "Scan", level = 0 } = {}) {
   for (const p of furniture.map(turned)) {
     const f = newFurniture("box", round(p.c[0], 3), round(p.c[1], 3));
     Object.assign(f, {
-      name: "Scanned object",
+      name: t("Scanned object"),
       w: round(Math.max(0.05, p.rect.long), 2),
       d: round(Math.max(0.05, p.rect.short), 2),
       h: round(Math.max(0.01, p.hi - p.lo), 2),
@@ -608,7 +609,7 @@ function findRooms(floor, gaps = []) {
     const outline = traceOutline(owner, nx, ny, r.label).map(([i, j]) => [x0 + i * CELL, y0 + j * CELL]);
     const pts2 = simplifyLoop(outline, CELL * 1.2).map((p) => [round(p[0], 3), round(p[1], 3)]);
     if (pts2.length < 3 || area(pts2) < MIN_ROOM_AREA) continue;
-    rooms.push({ id: uid(), name: `Room ${rooms.length + 1}`, points: pts2, color: "#8ab4f8",
+    rooms.push({ id: uid(), name: t("Room {n}", { n: rooms.length + 1 }), points: pts2, color: "#8ab4f8",
       area_id: null, entity_id: null, sensor_entity_id: null });
   }
   return rooms;

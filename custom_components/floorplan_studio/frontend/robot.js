@@ -6,6 +6,7 @@
 // or else matched by name. The pose is kept per piece, so the 2D plan and the 3D view
 // show the robot in the same place.
 
+import { t } from "./i18n.js";
 import { domainOf, pointInPolygon } from "./model.js";
 
 const SPEED = 0.32; // m/s, about what a robot vacuum drives while cleaning
@@ -19,7 +20,7 @@ export function vacuumRooms(hass, vacuumId) {
   const rooms = hass?.states?.[vacuumId]?.attributes?.rooms;
   if (!rooms || typeof rooms !== "object") return [];
   const list = Array.isArray(rooms) ? rooms : Object.values(rooms).flat();
-  return list.filter((r) => r && r.id !== undefined).map((r) => ({ id: String(r.id), name: r.name || `Room ${r.id}` }));
+  return list.filter((r) => r && r.id !== undefined).map((r) => ({ id: String(r.id), name: r.name || t("Room {n}", { n: r.id }) }));
 }
 
 /** Sensor reporting the room the vacuum is in (same device, `room_id` attribute). */

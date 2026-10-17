@@ -1,10 +1,13 @@
 """Constants for Floorplan Studio."""
 
 DOMAIN = "floorplan_studio"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 PANEL_URL_PATH = "floorplan-studio"
 PANEL_TITLE = "Floorplan"
+# Sidebar title by Home Assistant's system language (the panel itself follows each
+# user's own language)
+PANEL_TITLES = {"nl": "Plattegrond"}
 PANEL_ICON = "mdi:floor-plan"
 PANEL_COMPONENT = "floorplan-studio-panel"
 

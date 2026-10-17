@@ -38,6 +38,10 @@
 // washing machine's final spin is fast and shakes the machine. The plan shows a turning
 // drum with the programme's progress around it.
 //
+// `tilt: { pivot }` (directional spots): the parts below `pivot` (share of the height) tilt
+// forward by the piece's `tilt` (degrees from straight down), and so does its light; the
+// piece's rotation turns it to where it points.
+//
 // `robot: true` (robot vacuum): linked to a vacuum entity, it drives lanes through the
 // room being cleaned and goes back to its place on the plan (the dock) afterwards.
 //
@@ -77,12 +81,14 @@
 // the sides, instead of a lamp's cone with an edge; keep its `angle` at about 1.25 or
 // less: in a wider shadow map, shadows near its edge come and go with small moves); `z`
 // is the default height of
-// the surface a piece stands on.
+// the surface a piece stands on. `lens`: radius of a spot's lens (share of its width): its beam comes
+// out of the whole lens, from inside the spot.
 //
 // Items that stand on a desk or TV unit start their parts part-way up (e.g. a
 // monitor's parts begin at 0.75 m), so they sit at the right height when placed
 // on top of that furniture.
 import { clone, consolePlaying, domainOf, foregroundApp, friendlyName, isPlaying, isScreenOn, isSounding, safeColor, surroundLevel, uid } from "./model.js";
+import { t } from "./i18n.js";
 
 const SONOS_BLACK = "#232325";
 /** Rounded rectangle outline for a `profile` part (shares of its depth and height, radius in metres). */
@@ -993,9 +999,13 @@ export const CATALOG = {
       cyl(cx - 0.006, cy - 0.006, cx + 0.006, cy + 0.006, z + 0.2, 0.975, "dark"),
       ball(cx - 0.15, cy - 0.15, cx + 0.15, cy + 0.15, z, z + 0.22, "shade")])] },
   spot: { label: "Recessed spot", icon: "mdi:light-recessed", cat: "Lighting", ceiling: true, w: 0.09, d: 0.09, h: 0.02, color: COLORS.white,
-    light: { z: 0, angle: 0.55, beam: true }, parts: [cyl(0, 0, 1, 1, 0.5, 1, "main"), cyl(0.15, 0.15, 0.85, 0.85, 0, 0.5, "shade", "solid")] },
+    light: { z: 0, angle: 0.55, beam: true, lens: 0.35 }, parts: [cyl(0, 0, 1, 1, 0.5, 1, "main"), cyl(0.15, 0.15, 0.85, 0.85, 0, 0.5, "shade", "solid")] },
+  // Directional: the body tilts on its ceiling plate (the piece's `tilt`), turned by its rotation
   spot_surface: { label: "Surface spot", icon: "mdi:spotlight-beam", cat: "Lighting", ceiling: true, w: 0.09, d: 0.09, h: 0.16, color: COLORS.white,
-    light: { z: 0, angle: 0.6, beam: true }, parts: [cyl(0, 0, 1, 1, 0.08, 1, "main"), cyl(0.12, 0.12, 0.88, 0.88, 0, 0.08, "shade", "solid")] },
+    light: { z: 0, angle: 0.6, beam: true, lens: 0.38 }, tilt: { pivot: 0.85 }, parts: [
+      cyl(-0.15, -0.15, 1.15, 1.15, 0.94, 1, "main"), // ceiling plate
+      cyl(0.38, 0.38, 0.62, 0.62, 0.85, 0.94, "main"), // joint
+      cyl(0, 0, 1, 1, 0.08, 0.85, "main"), cyl(0.12, 0.12, 0.88, 0.88, 0, 0.08, "shade", "solid")] },
   track: { label: "Track light", icon: "mdi:track-light", cat: "Lighting", ceiling: true, w: 1.5, d: 0.1, h: 0.25, color: COLORS.dark,
     light: { z: 0, angle: 1.0, beam: true }, parts: [
       box(0, 0.3, 1, 0.7, 0.88, 1, "main"),
@@ -1331,7 +1341,7 @@ function describePlayer(hass, playerId, via) {
   if (domainOf(playerId) !== "media_player") {
     // A game console known by its online status: the game being played and its cover
     const game = consolePlaying(hass, playerId);
-    return { title: game?.title || friendlyName(hass, playerId), subtitle: via ? `via ${via}` : "", app: "PlayStation",
+    return { title: game?.title || friendlyName(hass, playerId), subtitle: via ? t("via {name}", { name: via }) : "", app: "PlayStation",
       picture: game?.picture || null, paused: false };
   }
   const a = player.attributes || {};
@@ -1339,12 +1349,12 @@ function describePlayer(hass, playerId, via) {
   // while the Apple TV still reports a paused Plex episode): show just that app
   const focus = foregroundApp(hass, playerId);
   if (focus && focus.bundle !== a.app_id) {
-    return { title: focus.name, subtitle: via ? `via ${via}` : "", app: focus.name, picture: null, paused: false };
+    return { title: focus.name, subtitle: via ? t("via {name}", { name: via }) : "", app: focus.name, picture: null, paused: false };
   }
   const show = a.media_series_title || a.media_artist;
   return {
     title: a.media_title || a.app_name || friendlyName(hass, playerId),
-    subtitle: [show, a.media_title ? a.app_name : null, via ? `via ${via}` : null].filter(Boolean).join(" · "),
+    subtitle: [show, a.media_title ? a.app_name : null, via ? t("via {name}", { name: via }) : null].filter(Boolean).join(" · "),
     app: a.app_name || "",
     picture: a.entity_picture || null,
     paused: player.state === "paused",
@@ -1479,11 +1489,32 @@ export function beamHalfAngle(f) {
   return l.angle ?? 1.3;
 }
 
+/** A directional spot's tilt in radians (0 = straight down); 0 for other pieces. */
+export const tiltOf = (f) => (catalogItem(f.type).tilt ? (Math.min(85, Math.max(0, f.tilt || 0)) * Math.PI) / 180 : 0);
+
+/**
+ * Where a lamp shines: [plan x, plan y, up] (unit vector), or null when it shines straight
+ * down (or as its catalog says). Directional spots point forward by their tilt.
+ */
+export function lightDirection(f) {
+  const a = tiltOf(f);
+  if (!a) return null;
+  return [...toWorld({ ...f, x: 0, y: 0 }, [0, Math.sin(a)]), -Math.cos(a)];
+}
+
 /** Default full beam angle of a catalog piece, in whole degrees (for the inspector). */
 export const defaultBeamAngle = (type) => Math.round((((catalogItem(type).light?.angle ?? 1.3) * 2) * 180) / Math.PI);
 
 export function lightAnchor(f, ceiling) {
-  const l = catalogItem(f.type).light || {};
+  const def = catalogItem(f.type);
+  const l = def.light || {};
+  const dir = lightDirection(f);
+  if (dir) {
+    // A tilted spot: its lens swings out with the body, around the joint
+    const pivot = baseHeight(f, ceiling) + def.tilt.pivot * f.h;
+    const reach = (def.tilt.pivot - (l.z ?? 0)) * f.h;
+    return [f.x + dir[0] * reach, f.y + dir[1] * reach, pivot + dir[2] * reach];
+  }
   const [x, y] = toWorld(f, [((l.x ?? 0.5) - 0.5) * f.w, ((l.y ?? 0.5) - 0.5) * f.d]);
   return [x, y, baseHeight(f, ceiling) + (l.z ?? 1) * f.h];
 }
@@ -1612,6 +1643,7 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
   let spinner = null;
   let drum = null;
   let load = null;
+  let tilter = null;
   const mats = { screen: [], shade: [], main: [] };
   const cache = new Map();
   const material = (key) => {
@@ -1752,6 +1784,16 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
       mesh.position.y -= pivot[1];
       mesh.castShadow = false;
       holder.add(mesh);
+    } else if (def.tilt && z1 <= def.tilt.pivot + 1e-6) {
+      // A directional spot's body: tilts forward around its joint
+      if (!tilter) {
+        tilter = new THREE.Group();
+        tilter.position.set(0, def.tilt.pivot * f.h, 0);
+        tilter.rotation.x = -tiltOf(f);
+        group.add(tilter);
+      }
+      mesh.position.y -= def.tilt.pivot * f.h;
+      tilter.add(mesh);
     } else {
       group.add(mesh);
     }
