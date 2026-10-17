@@ -1,6 +1,12 @@
 # Floorplan Studio
 
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bazzie&repository=floorplan-studio&category=integration)
+
 A Home Assistant integration that adds a **Floorplan** panel to the sidebar. Draw your home in the browser and view it live in 2D or 3D.
+
+![The plan in 2D: rooms in the colour of their lights, temperatures, open doors and windows, and furniture linked to entities](https://raw.githubusercontent.com/bazzie/floorplan-studio/main/docs/images/plan-2d.png)
+
+![The same home in 3D, with low walls: lamps that are on light up their rooms](https://raw.githubusercontent.com/bazzie/floorplan-studio/main/docs/images/view-3d.png)
 
 - **Editor** (available to all users): walls, rooms, doors, windows and entity markers. It snaps to a grid and to existing corners, and has undo/redo.
 - **Blueprint**: upload an image of your floorplan and trace over it. *Calibrate scale* sets the real size from two points whose distance you know.
@@ -10,22 +16,49 @@ A Home Assistant integration that adds a **Floorplan** panel to the sidebar. Dra
   - Rooms can show a sensor value.
   - Doors and windows show as open when a linked contact sensor is open.
 - **Tap actions**: tap a marker to toggle it or open HA's more-info dialog. Tap a room to open its entity.
+- **Furniture**: a catalog of furniture, lamps, appliances, media and smart-home devices (Sonos, Philips Hue), garden pieces and more, the same in 2D and 3D. Link a piece to an entity and it comes alive:
+  - lamps light up their room (in 3D with real light and shadows),
+  - TVs show what's playing, speakers show sound waves,
+  - fans spin, radiators glow, a robot vacuum drives through the room it cleans,
+  - a washing machine's drum turns while it runs.
 - **3D view**: walls are extruded with door and window openings, and floors are stacked.
   - Drag to rotate; Shift-drag or right-drag to pan; scroll or pinch to zoom.
   - *Low walls* lowers the walls so you can look inside.
   - *All floors* shows the floors above the selected one.
+  - Day and night follow the sun.
+- **3D scan import**: start from a LiDAR room scan (an OBJ from an iPhone or iPad app using Apple RoomPlan, such as 3D Snap): walls, doors, windows, rooms and furniture blocks.
 
 ## Install
 
-**HACS**: add this repository as a custom repository (type *Integration*), install *Floorplan Studio*, and restart HA.
+### With HACS (recommended)
 
-**Manual**: copy `custom_components/floorplan_studio` into `<config>/custom_components/` and restart HA.
+1. Click this button to open the repository in HACS on your own Home Assistant:
 
-Then go to **Settings → Devices & services → Add integration → Floorplan Studio**. A **Floorplan** item appears in the sidebar.
+   [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bazzie&repository=floorplan-studio&category=integration)
+
+   Or add it by hand: **HACS → ⋮ (top right) → Custom repositories**, repository
+   `https://github.com/bazzie/floorplan-studio`, type **Integration**.
+2. Click **Download** (bottom right), then **Download** again to confirm.
+3. Restart Home Assistant (**Settings → System → ⏻ → Restart Home Assistant**).
+4. Add the integration:
+
+   [![Open your Home Assistant instance and start setting up Floorplan Studio.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=floorplan_studio)
+
+   Or: **Settings → Devices & services → Add integration → Floorplan Studio**.
+
+A **Floorplan** item appears in the sidebar. HACS shows an update when a new version is
+released.
+
+### Manually
+
+Copy `custom_components/floorplan_studio` from the [latest release](https://github.com/bazzie/floorplan-studio/releases/latest)
+into `<config>/custom_components/`, restart Home Assistant and add the integration as in step 4.
 
 Requires Home Assistant 2024.7 or newer. three.js is bundled, so it works offline.
 
 ## Using the editor
+
+![The editor: tools on the left, the furniture catalog on the right](https://raw.githubusercontent.com/bazzie/floorplan-studio/main/docs/images/editor.png)
 
 Click **Edit**, choose a tool on the left, and set properties in the panel on the right. Changes are saved automatically about a second after you stop editing. The header shows *Saving…*, *All changes saved*, or *Save failed* with a **Retry** button. **Done** saves anything pending and closes the editor.
 
