@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Floorplan Studio",
+        "description": "Adds a Floorplan panel to the sidebar where you can draw your home and view it in 2D or 3D."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Floorplan Studio is already configured."
+    }
+  }
+}

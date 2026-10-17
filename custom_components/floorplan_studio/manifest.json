@@ -1,0 +1,14 @@
+{
+  "domain": "floorplan_studio",
+  "name": "Floorplan Studio",
+  "codeowners": ["@bazzie"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/bazzie/floorplan-studio",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/bazzie/floorplan-studio/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.2.0"
+}
