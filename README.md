@@ -8,9 +8,11 @@ A Home Assistant integration that adds a **Floorplan** panel to the sidebar. Dra
 
 ![The same home in 3D, with low walls: lamps that are on light up their rooms](https://raw.githubusercontent.com/bazzie/floorplan-studio/main/docs/images/view-3d.png)
 
+![Both floors at once: the first floor above the ground floor, with low walls, the stairs up through the stairwell and an almost see-through roof](https://raw.githubusercontent.com/bazzie/floorplan-studio/main/docs/images/levels-3d.png)
+
 - **Editor** (available to all users): walls, rooms, doors, windows and entity markers. It snaps to a grid and to existing corners, and has undo/redo.
 - **Blueprint**: upload an image of your floorplan and trace over it. *Calibrate scale* sets the real size from two points whose distance you know.
-- **Multiple floors**, each with its own level and wall height.
+- **Multiple floors**, each with its own level and wall height. Staircases reach the floor above, and a floor opening (stairwell, vide) cuts through it. In 3D, *All floors* shows them stacked, and a roof can be made see-through.
 - **Live state**:
   - Rooms light up in the color of a linked light or switch.
   - Rooms can show a sensor value.

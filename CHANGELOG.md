@@ -2,6 +2,11 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.3.1 (2026-10-17)
+
+- Documentation: both floors of the demo house in 3D
+- Documentation: screenshots with the demo house's corrected stairs
+
 ## 0.3.0 (2026-10-17)
 
 - Dutch translation of the panel, the catalog and the setup
