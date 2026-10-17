@@ -320,6 +320,56 @@ export function isActive(stateObj) {
   return ACTIVE_STATES.has(stateObj.state);
 }
 
+// ---------- which state changes matter ----------
+
+const ENTITY_ID = /\b[a-z_]+\.[a-z0-9_]+\b/g;
+
+/**
+ * The entities whose state the plan shows: those named anywhere in the plan, the other
+ * entities of their devices (a washer's progress, a camera's motion sensor, a soundbar's
+ * surround switch), the lights and temperature sensors of the rooms' areas, sensors that
+ * point at a player (the app in front on an Apple TV) and the sun. A Home Assistant
+ * update that changes none of these (a power meter elsewhere in the house) can be
+ * skipped by the views, which matters on slower devices: Home Assistant sends one for
+ * every state change in the house.
+ */
+export function planEntities(hass, doc) {
+  const states = hass?.states || {};
+  const entities = hass?.entities || {};
+  const devices = hass?.devices || {};
+  const ids = new Set(["sun.sun"]);
+  const text = JSON.stringify(doc || {});
+  for (const m of text.matchAll(ENTITY_ID)) if (m[0] in states) ids.add(m[0]);
+  const areas = new Set([...text.matchAll(/"area_id":"([^"]+)"/g)].map((m) => m[1]));
+  for (const area of areas) {
+    const temp = hass?.areas?.[area]?.temperature_entity_id;
+    if (temp) ids.add(temp);
+  }
+  const deviceIds = new Set([...ids].map((id) => entities[id]?.device_id).filter(Boolean));
+  for (const ent of Object.values(entities)) {
+    const area = ent.area_id || devices[ent.device_id]?.area_id;
+    if (deviceIds.has(ent.device_id) || (area && areas.has(area))) ids.add(ent.entity_id);
+  }
+  for (const [id, st] of Object.entries(states)) {
+    if (ids.has(st.attributes?.media_player_entity_id)) ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * Does a new hass object change anything the plan shows? (When `ids` is unknown: yes.)
+ * Registries, language and theme count; of the states only those of `ids`.
+ */
+export function hassChanged(prev, next, ids) {
+  if (!prev || !ids) return true;
+  for (const k of ["entities", "devices", "areas", "language", "locale", "themes", "selectedTheme"]) {
+    if (prev[k] !== next[k]) return true;
+  }
+  if (prev.states === next.states) return false;
+  for (const id of ids) if (prev.states[id] !== next.states[id]) return true;
+  return false;
+}
+
 export const isUnavailable = (stateObj) =>
   !stateObj || stateObj.state === "unavailable" || stateObj.state === "unknown";
 

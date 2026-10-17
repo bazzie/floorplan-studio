@@ -2,6 +2,14 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.4.0 (2026-10-17)
+
+- Redraw only when something on the plan changes
+- Lighter rendering on slower devices
+- README: running on slower devices
+- Automatic quality from the GPU, or a measurement on the device
+- README: how the quality is picked; screenshots always at full quality
+
 ## 0.3.1 (2026-10-17)
 
 - Documentation: both floors of the demo house in 3D

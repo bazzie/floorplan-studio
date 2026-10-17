@@ -2,6 +2,7 @@
 import * as THREE from "./vendor/three.module.min.js";
 import { OrbitControls } from "./vendor/OrbitControls.js";
 import { currentLanguage, t } from "./i18n.js";
+import { needsMeasurement, quality, qualityMode, setMeasuredQuality } from "./quality.js";
 import {
   soundArea,
   COMPASS_STYLE,
@@ -24,6 +25,7 @@ import {
   heatLevel,
   isHeating,
   isScreenOn,
+  hassChanged,
   laundryState,
   isUnavailable,
   pointInPolygon,
@@ -375,20 +377,24 @@ export class FpsView3D extends HTMLElement {
 
   _init() {
     try {
-      this._renderer = new THREE.WebGLRenderer({ antialias: true });
+      // Rendering quality for this device (quality.js): lighter on slow hardware
+      this._q = quality();
+      this._measure = needsMeasurement(); // an unknown GPU: time a few frames once (see _measureDevice)
+      this._renderer = new THREE.WebGLRenderer({ antialias: this._q.antialias, powerPreference: "high-performance" });
     } catch (err) {
       this.shadowRoot.innerHTML += `<div class="error">3D view unavailable: ${escapeHtml(err.message)}</div>`;
       return;
     }
     const r = this._renderer;
-    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this._pixelRatio = Math.min(window.devicePixelRatio || 1, this._q.pixelRatio);
+    r.setPixelRatio(this._pixelRatio);
     r.shadowMap.enabled = true;
-    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.type = this._q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     r.shadowMap.autoUpdate = false; // redrawn on demand, see _invalidateShadows()
     // Every shadow-casting light takes one of the GPU's texture slots in the
     // lighting shader (usually 16). Keep room for the sun's shadow and surface
     // textures; going over makes the shader fail and all surfaces vanish.
-    this._shadowBudget = Math.max(0, r.capabilities.maxTextures - 4);
+    this._shadowBudget = Math.min(this._q.lampShadows, Math.max(0, r.capabilities.maxTextures - 4));
     r.debug.onShaderError = (gl, program, vs, fs) => {
       // Safety net: if a GPU still refuses, use fewer shadows and redraw
       console.warn("Floorplan Studio: lighting shader failed; reducing light shadows", this._shadowBudget);
@@ -424,7 +430,7 @@ export class FpsView3D extends HTMLElement {
     sun.position.set(20, 40, 12);
     sun.castShadow = true;
     sun.shadow.autoUpdate = false;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(this._q.sunShadow, this._q.sunShadow);
     sun.shadow.bias = -0.0005;
     this._sun = sun;
     this._scene.add(sun, sun.target);
@@ -487,7 +493,8 @@ export class FpsView3D extends HTMLElement {
     this._localizeHud();
     const prev = this._hass;
     this._hass = hass;
-    if (!prev || prev.states !== hass.states) this._applyStates();
+    // Only for changes the plan shows (`relevant`: set by the panel, see planEntities)
+    if (hassChanged(prev, hass, this.relevant)) this._applyStates();
   }
 
   /** props: { doc, docVersion, floorId, blueprintUrls: {imageId: {url, aspect}} } */
@@ -560,7 +567,90 @@ export class FpsView3D extends HTMLElement {
       this._renderer.render(this._scene, this._camera);
       this._renderCompass();
       this._positionOverlay();
+      this._watchFrameRate();
+      if (this._measure && this._bounds) this._measureDevice();
     });
+  }
+
+  /**
+   * A GPU we can't name ("Apple GPU" on an iPad or iPhone, Firefox): draw the plan a couple
+   * of dozen times the first time the 3D view opens, and pick the profile by how quickly
+   * frames come (fewer than ~25 a second: light). The result is kept for this browser, so
+   * it's measured once.
+   */
+  async _measureDevice() {
+    this._measure = false;
+    const gaps = [];
+    let last = performance.now();
+    for (let i = 0; i < 24; i++) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      if (!this.isConnected || document.hidden || !this._renderer) return; // not now: again next time
+      this._renderer.render(this._scene, this._camera);
+      const now = performance.now();
+      gaps.push(now - last);
+      last = now;
+    }
+    const steady = gaps.slice(4); // the first frames compile shaders
+    const average = steady.reduce((a, b) => a + b, 0) / steady.length;
+    this._setMeasured(average > 40 ? "low" : "high");
+  }
+
+  /** Keep a measured profile for this device and use it now (tells the panel). */
+  _setMeasured(name) {
+    setMeasuredQuality(name);
+    if (qualityMode() === "auto" && name !== this._q?.name) {
+      this.applyQuality();
+      this.dispatchEvent(new CustomEvent("fps-quality", { bubbles: true, composed: true, detail: { name } }));
+    }
+  }
+
+  /** The quality setting changed: use the new profile (anti-aliasing needs a page reload). */
+  applyQuality() {
+    if (!this._renderer) return;
+    this._q = quality();
+    this._pixelRatio = Math.min(window.devicePixelRatio || 1, this._q.pixelRatio);
+    this._renderer.setPixelRatio(this._pixelRatio);
+    this._renderer.shadowMap.type = this._q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this._shadowBudget = Math.min(this._q.lampShadows, Math.max(0, this._renderer.capabilities.maxTextures - 4));
+    const sunShadow = this._sun.shadow;
+    if (sunShadow.mapSize.x !== this._q.sunShadow) {
+      sunShadow.mapSize.set(this._q.sunShadow, this._q.sunShadow);
+      sunShadow.map?.dispose();
+      sunShadow.map = null;
+    }
+    this._scene.traverse((o) => {
+      for (const m of [].concat(o.material || [])) m.needsUpdate = true; // the new shadow type
+    });
+    this._resize();
+    this._rebuild(); // light slots for the new number of lights
+  }
+
+  /**
+   * Dynamic resolution: while the view keeps moving (turning, zooming, animating), frames
+   * should come quickly. When they average under ~20 per second, draw fewer pixels (down
+   * to half the screen's resolution); the picture gets a little softer, moving it smooth.
+   */
+  _watchFrameRate() {
+    const now = performance.now();
+    const gap = now - (this._lastFrame || 0);
+    this._lastFrame = now;
+    if (gap > 250) {
+      this._frameGaps = []; // a pause, not a slow frame
+      return;
+    }
+    const gaps = (this._frameGaps ||= []);
+    gaps.push(gap);
+    if (gaps.length < 30) return;
+    const average = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    this._frameGaps = [];
+    if (average > 50 && this._pixelRatio > 0.5) {
+      this._pixelRatio = Math.max(0.5, this._pixelRatio * 0.75);
+      this._renderer.setPixelRatio(this._pixelRatio);
+      this._resize();
+    } else if (average > 50 && this._q?.name === "high" && qualityMode() === "auto") {
+      // Still too slow at the lowest resolution: switch to the light profile, for good
+      this._setMeasured("low");
+    }
   }
 
   /** Turn the compass with the camera so N points at the house's north. */
@@ -1331,7 +1421,7 @@ export class FpsView3D extends HTMLElement {
    * stripes and staircases); a point light's six 90° shadow maps can.
    */
   _buildLightPool() {
-    const count = Math.min(MAX_LIGHTS, this._dynamic.filter(isLightRecord).length);
+    const count = Math.min(this._q?.maxLights ?? MAX_LIGHTS, this._dynamic.filter(isLightRecord).length);
     this._lightPool = [];
     for (let i = 0; i < count; i++) {
       const spot = new THREE.SpotLight(0xffffff, 0, 1, 1, 0.5, 1.6);
@@ -1557,10 +1647,17 @@ export class FpsView3D extends HTMLElement {
     if (this._pulseRaf || !this._renderer || !busy()) return;
     let last = performance.now();
     let lastAmbi = 0;
+    const frame = 1000 / (this._q?.fps || 60) - 2; // the profile's animation frame rate
+    let drawn = 0;
     const tick = () => {
       this._pulseRaf = null;
       if (!busy() || !this.isConnected) return;
       const now = performance.now();
+      if (now - drawn < frame) {
+        this._pulseRaf = requestAnimationFrame(tick);
+        return;
+      }
+      drawn = now;
       if (!moving()) {
         if (now - lastAmbi > 80) {
           lastAmbi = now;
@@ -1643,7 +1740,7 @@ export class FpsView3D extends HTMLElement {
         }
       }
       // The most prominent lamps get sharper shadow edges
-      const sharp = want && i < SHARP_SHADOWS;
+      const sharp = want && i < (this._q?.sharpShadows ?? SHARP_SHADOWS);
       for (const [light, size] of [[spot, sharp ? 2048 : 1024], [point, sharp ? 1024 : 512]]) {
         if (light.shadow.mapSize.x !== size) {
           light.shadow.mapSize.set(size, size);
@@ -1925,8 +2022,24 @@ export class FpsView3D extends HTMLElement {
     this._poseRobots();
     this._startPulseLoop();
     this._updateOverlayContent();
-    this._invalidateShadows(); // light colour/intensity changed
+    // Shadow maps only depend on where the lights are and which cast shadows (not on their
+    // colour or brightness): redrawing them for every state change is costly on slow devices
+    const lights = this._lightSignature();
+    if (lights !== this._lastLightSignature) {
+      this._lastLightSignature = lights;
+      this._invalidateShadows();
+    }
     this.requestRender();
+  }
+
+  /** Where the light slots are and which cast shadows (see _applyStates). */
+  _lightSignature() {
+    const v = (p) => `${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`;
+    return (this._lightPool || []).map((spot) => {
+      const point = spot.userData.point;
+      const on = spot.intensity > 0 || point.intensity > 0;
+      return on ? `${v(spot.position)}>${v(spot.target.position)}|${point.visible ? "p" : "s"}|${spot.castShadow || point.castShadow}|${spot.angle.toFixed(3)}` : "-";
+    }).join(";");
   }
 
   // ---------- HTML overlay ----------

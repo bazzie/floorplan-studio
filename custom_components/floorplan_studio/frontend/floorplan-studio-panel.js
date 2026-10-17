@@ -26,6 +26,7 @@ import {
   newMarker,
   normalizeAngle,
   normalizeDoc,
+  planEntities,
   readPref,
   removeDuplicateOpenings,
   round,
@@ -38,6 +39,10 @@ import { CATALOG, CATEGORIES, MIN_HEIGHT, MIN_SIZE, catalogItem, defaultBeamAngl
 import { FLOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, floorFinish, isOutdoor, roofFinish, wallFinish } from "./materials.js";
 import { ROOF_TYPES, roofHeight } from "./roof.js";
 import { cleaningRoom, currentRoomSensor, vacuumRooms } from "./robot.js";
+import { autoQuality, needsMeasurement, qualityMode, setMeasuredQuality, setQualityMode } from "./quality.js";
+
+// For places where `t` is a local variable (an event target)
+const translate = (text, vars) => t(text, vars);
 import { parseObj, scanToFloor } from "./scan.js";
 import { setLanguage, t } from "./i18n.js";
 
@@ -279,8 +284,16 @@ class FloorplanStudioPanel extends HTMLElement {
       this._refreshAll();
     }
     if (first) this._load();
-    if (this._plan) this._plan.hass = hass;
-    if (this._view3d) this._view3d.hass = hass;
+    // The views skip updates that change nothing on the plan (see planEntities)
+    const relevant = this._relevantEntities();
+    if (this._plan) {
+      this._plan.relevant = relevant;
+      this._plan.hass = hass;
+    }
+    if (this._view3d) {
+      this._view3d.relevant = relevant;
+      this._view3d.hass = hass;
+    }
     // sun.sun moves slowly; only push lighting changes when they're visible
     const sun = this._sunInfo();
     if (this._root && JSON.stringify(sun) !== JSON.stringify(this._lastSun)) {
@@ -298,6 +311,25 @@ class FloorplanStudioPanel extends HTMLElement {
       this._inspectorKey = key;
       if (was !== undefined && this._aside && !this._aside.contains(this.shadowRoot.activeElement)) this._renderInspector();
     }
+  }
+
+  /** "Automatic (light, Mali-G52)": what Automatic picks on this device, and why. */
+  _autoQualityLabel() {
+    const auto = autoQuality();
+    const profile = auto.name === "low" ? t("light") : t("full");
+    const reason = auto.reason === "gpu" ? auto.gpu : auto.reason === "measured" ? t("measured") : t("memory and cores");
+    return t("Automatic ({profile}, {reason})", { profile, reason });
+  }
+
+  /** Entities the views redraw for (planEntities); worked out again when the plan or the registries change. */
+  _relevantEntities() {
+    const h = this._hass;
+    const key = [this._doc, this._docVersion, h?.entities, h?.devices, h?.areas];
+    const cache = this._relevantCache;
+    if (cache && cache.key.every((v, i) => v === key[i])) return cache.ids;
+    const ids = this._doc ? planEntities(h, this._doc) : null;
+    this._relevantCache = { key, ids };
+    return ids;
   }
 
   /** Live data the selected piece's settings depend on (empty for most pieces). */
@@ -905,6 +937,12 @@ class FloorplanStudioPanel extends HTMLElement {
     if (want === "3d" && !this._view3d) {
       this._view3d = document.createElement("fps-view-3d");
       this._view3d.hass = this._hass;
+      // The 3D view measured this device, or found it too slow in use: it switched profile
+      this._view3d.addEventListener("fps-quality", (e) => {
+        this._plan?.applyQuality();
+        this._renderInspector();
+        if (e.detail?.name === "low") this._toast(t("Switched to light quality: this device was too slow for full 3D"));
+      });
     }
     const el = want === "3d" ? this._view3d : this._plan;
     if (this._stage.firstElementChild !== el) this._stage.replaceChildren(el);
@@ -1326,6 +1364,11 @@ class FloorplanStudioPanel extends HTMLElement {
         <p class="muted">${t("Start from a LiDAR room scan: an OBJ file from an iPhone or iPad scanning app (Apple RoomPlan, e.g. 3D Snap). It becomes a new floor with the walls, doors, windows, rooms and furniture as blocks, to check and tidy up.")}</p>
         <div class="actions"><button class="btn" data-act="import-scan"><ha-icon icon="mdi:cube-scan"></ha-icon>${t("Import scan")}</button></div>
         <input type="file" data-file="scan" accept=".obj" hidden>
+        <h4>${t("This device")}</h4>
+        <div class="field"><label>${t("Quality")}</label><select data-pref="quality">
+          ${[["auto", this._autoQualityLabel()], ["high", t("Full")], ["low", t("Light, for slower devices")]]
+            .map(([v, label]) => `<option value="${v}" ${qualityMode() === v ? "selected" : ""}>${label}</option>`).join("")}
+        </select><span class="muted">${t("Light uses fewer pixels, simpler shadows, fewer lights and slower animation in 3D, and no blur in 2D, for wall tablets and phones. Applies to this browser only.")}</span></div>
         ${this._doc.floors.length > 1 ? `<h4>${t("Danger zone")}</h4><div class="actions"><button class="btn danger" data-act="delete-floor">${t("Delete this floor")}</button></div>` : ""}`;
     }
     this._aside.innerHTML = html;
@@ -1788,6 +1831,18 @@ class FloorplanStudioPanel extends HTMLElement {
       writePref("underlay", value ? "1" : "0");
       this._renderInspector();
       this._refreshViews();
+      return;
+    }
+    if (t.dataset.pref === "quality") {
+      setQualityMode(t.value);
+      if (t.value === "auto") {
+        // Back to automatic: decide afresh (a GPU we can't name is measured again)
+        setMeasuredQuality("");
+        if (this._view3d) this._view3d._measure = needsMeasurement();
+      }
+      this._plan?.applyQuality();
+      this._view3d?.applyQuality();
+      this._toast(t.value === "auto" ? translate("Quality: automatic") : translate("Quality set for this device"));
       return;
     }
     if (t.dataset.pref === "wall_thickness") {

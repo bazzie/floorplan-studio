@@ -1,5 +1,6 @@
 // 2D floorplan view + editor (SVG world layer with an HTML overlay for icons).
 import { currentLanguage, t } from "./i18n.js";
+import { quality } from "./quality.js";
 import {
   COMPASS_STYLE,
   PLAYING_STYLE,
@@ -26,6 +27,7 @@ import {
   heatLevel,
   isHeating,
   isScreenOn,
+  hassChanged,
   laundryState,
   isUnavailable,
   normalizeAngle,
@@ -451,9 +453,22 @@ export class FpsPlan2D extends HTMLElement {
     this._ro.disconnect();
   }
 
-  set hass(hass) {
-    this._hass = hass;
+  /** This device's rendering quality (quality.js); read again when the setting changes. */
+  _quality() {
+    return (this._q ||= quality());
+  }
+
+  /** The quality setting changed: use the new profile. */
+  applyQuality() {
+    this._q = null;
     this.requestRender();
+  }
+
+  set hass(hass) {
+    const prev = this._hass;
+    this._hass = hass;
+    // Only redraw for changes the plan shows (`relevant`: set by the panel, see planEntities)
+    if (hassChanged(prev, hass, this.relevant)) this.requestRender();
   }
 
   get hass() {
@@ -1391,7 +1406,7 @@ export class FpsPlan2D extends HTMLElement {
         ambi = `<g class="ambi${this.dimLights ? " dim" : ""}"><defs><linearGradient id="ambi-${f.id}">${cols.map((c, i) => `<stop offset="${i / 2}" stop-color="${c}"/>`).join("")}</linearGradient>
             <filter id="ambi-blur-${f.id}" x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="${blur.toFixed(3)}"/></filter></defs>
           <rect x="${-f.w / 2 - 0.1}" y="${-f.d / 2}" width="${f.w + 0.2}" height="${f.d + 0.12}" fill="url(#ambi-${f.id})"
-            opacity="${(0.55 + 0.35 * (1 - (this.daylight ?? 1))).toFixed(2)}" filter="url(#ambi-blur-${f.id})" style="pointer-events:none;stroke:none"/></g>`;
+            opacity="${(0.55 + 0.35 * (1 - (this.daylight ?? 1))).toFixed(2)}" ${this._quality().blur ? `filter="url(#ambi-blur-${f.id})"` : ""} style="pointer-events:none;stroke:none"/></g>`;
       }
       // Floodlight on: a warm beam in front of the camera
       const flood = def.floodlight ? cameraFloodlight(this._hass, f.entity_id) : null;
@@ -1431,7 +1446,7 @@ export class FpsPlan2D extends HTMLElement {
             <stop offset="0" stop-color="#ff4a12" stop-opacity="1"/><stop offset=".45" stop-color="#ff7a2e" stop-opacity=".55"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></linearGradient>
             <filter id="heat-blur-${f.id}" x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="${blur.toFixed(3)}"/></filter></defs>
           <rect x="${-f.w / 2 - 0.1}" y="${-f.d / 2}" width="${f.w + 0.2}" height="${f.d + 0.7}" fill="url(#heat-${f.id})"
-            filter="url(#heat-blur-${f.id})" style="pointer-events:none;stroke:none"/></g>`;
+            ${this._quality().blur ? `filter="url(#heat-blur-${f.id})"` : ""} style="pointer-events:none;stroke:none"/></g>`;
       }
       // Washing machine or dryer running: its drum turning, with the programme's progress around it
       const drum = def.laundry && f.entity_id && !this.editing ? this._laundrySvg(f, def) : "";
