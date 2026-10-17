@@ -44,7 +44,7 @@ import {
 } from "./model.js";
 
 const HOT = new THREE.Color("#ff5a2c"); // a heating radiator warms up towards this
-import { baseHeight, beamHalfAngle, buildFurniture3D, catalogItem, lightAnchor, lightDirection, pieceSounding, toWorld, tvSource } from "./furniture.js";
+import { baseHeight, beamHalfAngle, buildFurniture3D, catalogItem, lightAnchor, lightDirection, mergeSlices, pieceSounding, toWorld, tvSource } from "./furniture.js";
 import { ROOF_MATERIALS, finishMaterial, floorFinish, isOutdoor, roofFinish, wallFinish } from "./materials.js";
 import { roofGeometry } from "./roof.js";
 import { createArtwork, createDeviceDisplay, createTvScreen } from "./tvscreen.js";
@@ -604,6 +604,83 @@ export class FpsView3D extends HTMLElement {
     }
   }
 
+  /**
+   * Fewer draw calls for the building: a floor's walls, window and door frames, sills and
+   * the like are hundreds of small meshes, each a draw call (again for every shadow map),
+   * and a wall has a material per side (its rooms' finishes inside, the facade outside).
+   * The parts that never change are regrouped per material (and shadow settings) into one
+   * mesh each, which looks the same. Left alone: room floors (tap targets, coloured by
+   * state), anything a live record changes (door leaves swing, lamps, screens), hidden
+   * shadow walls, see-through meshes (drawn in order), furniture (merged per piece), and
+   * meshes with a role of their own.
+   */
+  _mergeStatic(g) {
+    const live = new Set();
+    for (const d of this._dynamic) for (const v of Object.values(d)) if (v?.isObject3D) live.add(v);
+    const casters = new Set(this._shadowCasters || []);
+    const occluders = new Set(this._occluders || []);
+    const taps = new Set(this._tapMeshes || []);
+    const fixed = (m) => m.isMesh && !m.children.length && m.visible && !m.renderOrder && !live.has(m) && !casters.has(m)
+      && m.raycast === THREE.Mesh.prototype.raycast && !Object.keys(m.userData).length
+      && [].concat(m.material).every((mat) => mat && !mat.transparent && !mat.clippingPlanes?.length);
+    // Candidates: the floor's own meshes, and the direct meshes of its static groups (a
+    // window's frame; a door's frame, but not its swinging leaf, which lives in a subgroup)
+    const candidates = [];
+    g.updateMatrix();
+    for (const c of g.children) {
+      if (c.isMesh) {
+        c.updateMatrix();
+        if (fixed(c)) candidates.push({ mesh: c, matrix: c.matrix.clone() });
+        continue;
+      }
+      let furniture = false;
+      c.traverse((o) => { if (o.userData.furniture) furniture = true; });
+      if (furniture || live.has(c) || Object.keys(c.userData).length) continue;
+      c.updateMatrix();
+      for (const m of c.children) {
+        m.updateMatrix();
+        if (fixed(m)) candidates.push({ mesh: m, matrix: c.matrix.clone().multiply(m.matrix) });
+      }
+    }
+    // Slices per material: a multi-material mesh (a wall) gives one per material group
+    const buckets = new Map();
+    for (const { mesh, matrix } of candidates) {
+      const flags = `${mesh.castShadow}|${mesh.receiveShadow}|${occluders.has(mesh)}|${taps.has(mesh)}`;
+      const slices = Array.isArray(mesh.material)
+        ? mesh.geometry.groups.map((gr) => ({ material: mesh.material[gr.materialIndex], start: gr.start, count: gr.count }))
+        : [{ material: mesh.material }];
+      for (const sl of slices) {
+        const key = `${sl.material.uuid}|${flags}`;
+        if (!buckets.has(key)) buckets.set(key, { material: sl.material, mesh, slices: [], sources: new Set() });
+        const b = buckets.get(key);
+        b.slices.push({ geometry: mesh.geometry, matrix, start: sl.start, count: sl.count });
+        b.sources.add(mesh);
+      }
+    }
+    // Only worth it when it saves draw calls; then every slice of those meshes must be merged
+    const merging = new Set();
+    for (const b of buckets.values()) if (b.slices.length > 1) b.sources.forEach((m) => merging.add(m));
+    if (!merging.size) return;
+    for (const b of buckets.values()) {
+      if (![...b.sources].some((m) => merging.has(m))) continue;
+      const geometry = mergeSlices(THREE, b.slices);
+      if (!geometry) return; // shouldn't happen; leave this floor as it is
+      const mesh = new THREE.Mesh(geometry, b.material);
+      mesh.castShadow = b.mesh.castShadow;
+      mesh.receiveShadow = b.mesh.receiveShadow;
+      mesh.matrixAutoUpdate = false; // the slices are already in the floor's coordinates
+      g.add(mesh);
+      if (occluders.has(b.mesh)) this._occluders.push(mesh);
+      if (taps.has(b.mesh)) this._tapMeshes.push(mesh);
+    }
+    for (const m of merging) {
+      m.parent?.remove(m);
+      m.geometry.dispose();
+    }
+    this._occluders = (this._occluders || []).filter((o) => !merging.has(o));
+    this._tapMeshes = (this._tapMeshes || []).filter((o) => !merging.has(o));
+  }
+
   /** The quality setting changed: use the new profile (anti-aliasing needs a page reload). */
   applyQuality() {
     if (!this._renderer) return;
@@ -1025,6 +1102,7 @@ export class FpsView3D extends HTMLElement {
           d.indoor = indoor.some((r) => pointInPolygon(at, r.points));
         }
       }
+      this._mergeStatic(g);
       this._group.add(g);
       box.expandByObject(g);
     }

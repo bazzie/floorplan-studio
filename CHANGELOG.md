@@ -2,6 +2,10 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.4.1 (2026-10-17)
+
+- 3D: far fewer draw calls (fixed parts merged per material)
+
 ## 0.4.0 (2026-10-17)
 
 - Redraw only when something on the plan changes

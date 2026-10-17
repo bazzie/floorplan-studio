@@ -1810,7 +1810,87 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
   }
   group.position.set(f.x, baseHeight(f, ceiling), f.y);
   group.rotation.y = (-(f.rotation || 0) * Math.PI) / 180; // plan rotation is clockwise
+  mergeParts(THREE, group, f);
   return { group, mats, spinner, ambilight, drum, load };
+}
+
+/**
+ * Fewer draw calls: a piece is drawn from many parts (legs, cushions, a frame), each its
+ * own mesh and draw call, again for every shadow map. The fixed parts that share a
+ * material and shadow settings become one mesh, which looks the same. Moving parts (in
+ * their own groups: fan blades, a drum, a tilting spot), and meshes with a role of their
+ * own (a roof, a glow), stay as they are. A plan with a hundred pieces drops from
+ * thousands of draw calls to hundreds, which slower GPUs need.
+ */
+function mergeParts(THREE, group, f) {
+  const buckets = new Map();
+  for (const m of group.children) {
+    if (!m.isMesh || m.children.length || m.renderOrder || Array.isArray(m.material)) continue;
+    if (m.raycast !== THREE.Mesh.prototype.raycast || Object.keys(m.userData).some((k) => k !== "furniture")) continue;
+    const key = `${m.material.uuid}|${m.castShadow}|${m.receiveShadow}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(m);
+  }
+  for (const meshes of buckets.values()) {
+    if (meshes.length < 2) continue;
+    const geometry = mergeGeometries(THREE, meshes);
+    if (!geometry) continue;
+    const mesh = new THREE.Mesh(geometry, meshes[0].material);
+    mesh.castShadow = meshes[0].castShadow;
+    mesh.receiveShadow = meshes[0].receiveShadow;
+    mesh.userData.furniture = f;
+    for (const m of meshes) {
+      group.remove(m);
+      m.geometry.dispose();
+    }
+    group.add(mesh);
+  }
+}
+
+/** One geometry from several meshes (each in its place in the group); null if they don't fit together. */
+export function mergeGeometries(THREE, meshes) {
+  return mergeSlices(THREE, meshes.map((m) => {
+    m.updateMatrix();
+    return { geometry: m.geometry, matrix: m.matrix };
+  }));
+}
+
+/**
+ * One geometry from slices of others: { geometry, matrix, start?, count? }, where start
+ * and count pick a range of a multi-material geometry's triangles (one of its groups;
+ * the whole geometry when left out). Null if they don't fit together.
+ */
+export function mergeSlices(THREE, slices) {
+  const parts = slices.map(({ geometry, matrix, start = 0, count }) => {
+    const flat = geometry.index ? geometry.toNonIndexed() : geometry; // group ranges stay valid
+    const n = count ?? flat.attributes.position.count - start;
+    const g = new THREE.BufferGeometry();
+    for (const name of ["position", "normal", "uv"]) {
+      const attr = flat.attributes[name];
+      if (!attr || attr.isInterleavedBufferAttribute) continue;
+      g.setAttribute(name, new THREE.BufferAttribute(attr.array.slice(start * attr.itemSize, (start + n) * attr.itemSize), attr.itemSize));
+    }
+    if (flat !== geometry) flat.dispose();
+    g.applyMatrix4(matrix);
+    return g;
+  });
+  if (parts.some((g) => g.attributes.position?.itemSize !== 3 || g.attributes.normal?.itemSize !== 3)) return null;
+  const total = parts.reduce((n, g) => n + g.attributes.position.count, 0);
+  const merged = new THREE.BufferGeometry();
+  for (const [name, size] of [["position", 3], ["normal", 3], ["uv", 2]]) {
+    const out = new Float32Array(total * size);
+    let at = 0;
+    for (const g of parts) {
+      const attr = g.attributes[name];
+      if (attr?.itemSize === size) out.set(attr.array, at); // a part without uv keeps zeros
+      at += g.attributes.position.count * size;
+    }
+    merged.setAttribute(name, new THREE.BufferAttribute(out, size));
+  }
+  parts.forEach((g) => g.dispose());
+  merged.computeBoundingSphere();
+  merged.computeBoundingBox();
+  return merged;
 }
 
 /** Perforated metal: a hole every 3 mm (for parts with world-sized UVs, like `profile`). */
