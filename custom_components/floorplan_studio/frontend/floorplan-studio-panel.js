@@ -40,7 +40,7 @@ import {
 import { CATALOG, CATEGORIES, SUBCATEGORIES, MIN_HEIGHT, MIN_SIZE, catalogItem, defaultBeamAngle, displayFeed, duplicateFurniture, newFurniture, tidyAvWiring } from "./furniture.js";
 import { FLOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, floorFinish, isOutdoor, roofFinish, wallFinish } from "./materials.js";
 import { ROOF_TYPES, roofHeight } from "./roof.js";
-import { cleaningRoom, currentRoomSensor, vacuumRooms } from "./robot.js";
+import { cleaningRoom, currentRoomSensor, mowingArea, vacuumRooms } from "./robot.js";
 import { autoQuality, needsMeasurement, qualityMode, setMeasuredQuality, setQualityMode } from "./quality.js";
 
 // For places where `t` is a local variable (an event target)
@@ -1297,7 +1297,7 @@ class FloorplanStudioPanel extends HTMLElement {
         ${def.av ? this._avSection(item, def) : ""}
         ${def.surround || def.sub ? this._surroundSection(item, def) : ""}
         ${def.homeTheater && domainOf(item.entity_id) === "media_player" ? this._bondedSection(item) : ""}
-        ${def.robot && item.entity_id ? this._vacuumSection(item) : ""}
+        ${def.robot === "mower" ? this._mowerSection(item) : def.robot && item.entity_id ? this._vacuumSection(item) : ""}
         ${item.entity_id ? `<div class="field"><label>${t("Tap action")}</label><select data-field="tap_action">
             ${tapOptions(this._hass, item, item.tap_action)}
           </select></div>
@@ -2110,6 +2110,14 @@ class FloorplanStudioPanel extends HTMLElement {
   }
 
   /** A robot vacuum's rooms, each matched to a room of this floor (where it drives while cleaning that room). */
+  /** A robot mower: which area it mows (the outdoor area its charging station is in). */
+  _mowerSection(item) {
+    const area = mowingArea(item, this._floor.rooms);
+    return `<h4>${t("Mowing")}</h4><p class="muted">${area
+      ? t("While mowing, it drives across {area} in random straight lines, turning at the edge, and drives back to its place here afterwards. Put it on its charging station.", { area: escapeHtml(area.name || t("the garden")) })
+      : t("Draw an outdoor area (lawn) on this floor: the mower mows the one its charging station is in.")}</p>`;
+  }
+
   _vacuumSection(item) {
     const rooms = vacuumRooms(this._hass, item.entity_id);
     const sensor = currentRoomSensor(this._hass, item.entity_id);

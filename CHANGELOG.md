@@ -2,6 +2,10 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.0 (2026-10-18)
+
+- Robot lawn mowers: Gardena SILENO and a charging station, mowing like the real thing
+
 ## 0.4.9 (2026-10-18)
 
 - Sonos: speakers modelled after the real products

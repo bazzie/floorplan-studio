@@ -44,6 +44,9 @@
 //
 // `robot: true` (robot vacuum): linked to a vacuum entity, it drives lanes through the
 // room being cleaned and goes back to its place on the plan (the dock) afterwards.
+// `robot: "mower"` (robot lawn mower): linked to a lawn mower entity, it mows the outdoor
+// area its place on the plan (the charging station) is in, in random straight lines that
+// turn at the edge, as Gardena's mowers do, and drives back home afterwards.
 //
 // `speaker: true` (Sonos speakers, soundbars): makes sound itself; shows sound waves
 // while its media player plays. Only speakers (these and `passive` ones) show waves.
@@ -110,6 +113,9 @@ export const COLORS = {
   laundry_red: "#b8453c",
   laundry_white: "#e6e1d6",
   led: "#3d8bff", // blue indicator light
+  gardena: "#14a5ab", // Gardena turquoise
+  stop: "#ff6a12", // a robot mower's orange STOP button
+  rubber: "#26282a", // tyres
   fabric: "#1c1d20", // black speaker cloth
   grille: "#36383c", // perforated speaker grille (drawn with a hole pattern in 3D)
   metal: "#9aa0a6",
@@ -181,6 +187,24 @@ const hourglass = (pinch, n = 24) => {
   const us = Array.from({ length: n + 1 }, (_, i) => 0.5 - 0.5 * Math.cos((Math.PI * i) / n)); // denser at the ends
   return [...us.map((u) => [u, 0.5 + half(u)]), ...us.slice(1, -1).reverse().map((u) => [u, 0.5 - half(u)])];
 };
+
+/**
+ * Robot lawn mower: a rounded shell, narrower at the nose (+y), over a dark chassis, big drive
+ * wheels at the back and small castor wheels at the front, a control lid on top with the
+ * orange STOP button. `accent`: a stripe round the shell (Gardena's turquoise).
+ */
+function robotMower({ accent = "main3" } = {}) {
+  const shell = [[0.08, 0, 0.06], [0.92, 0, 0.06], [1, 0.55, 0.12], [0.82, 1, 0.1], [0.18, 1, 0.1], [0, 0.55, 0.12]];
+  return [
+    plan(0.06, 0.04, 0.94, 0.96, 0.08, 0.45, "main3", shell, { bevel: 0.01 }),
+    plan(0.03, 0.01, 0.97, 0.99, 0.38, 0.46, accent, shell, { bevel: 0.006 }),
+    plan(0.04, 0.02, 0.96, 0.98, 0.42, 0.97, "main", shell, { bevel: 0.05 }),
+    cyl(-0.02, 0.1, 0.1, 0.42, 0, 0.62, "rubber", "side"), cyl(0.9, 0.1, 1.02, 0.42, 0, 0.62, "rubber", "side"),
+    cyl(0.2, 0.8, 0.27, 0.92, 0, 0.3, "rubber", "side"), cyl(0.73, 0.8, 0.8, 0.92, 0, 0.3, "rubber", "side"),
+    plan(0.3, 0.36, 0.7, 0.66, 0.95, 1, "dark", roundRect(0, 0, 1, 1, 0.03), { bevel: 0.006 }),
+    cyl(0.44, 0.7, 0.56, 0.78, 0.96, 1.04, "stop"),
+  ];
+}
 
 /** Arc floor lamp: marble base, a steel arch curving over, and a shade at its end. */
 function arcLamp(globe) {
@@ -1285,6 +1309,16 @@ export const CATALOG = {
     cyl(0, 0, 1, 1, 0, 1, "main"), cyl(0.38, 0.12, 0.62, 0.36, 1, 1.08, "metal")] },
   vacuum_dock: { label: "Vacuum dock", icon: "mdi:home-import-outline", cat: "Appliances", w: 0.32, d: 0.16, h: 0.12, color: COLORS.dark, parts: [
     box(0, 0, 1, 1, 0, 1, "main"), box(0.1, 0.9, 0.9, 1.4, 0, 0.08, "dark")] },
+  robot_mower: { label: "Robot lawn mower", icon: "mdi:robot-mower", cat: "Garden", robot: "mower", w: 0.42, d: 0.6, h: 0.25, color: "#5b6a5d", parts: robotMower() },
+  gardena_sileno_city: { label: "SILENO city", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.39, d: 0.56, h: 0.24, color: "#5d666b", parts: robotMower({ accent: "gardena" }) },
+  gardena_sileno_life: { label: "SILENO life", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.41, d: 0.63, h: 0.25, color: "#5d666b", parts: robotMower({ accent: "gardena" }) },
+  gardena_sileno_minimo: { label: "SILENO minimo", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.37, d: 0.52, h: 0.22, color: "#6b7479", parts: robotMower({ accent: "gardena" }) },
+  gardena_station: { label: "Charging station", icon: "mdi:home-lightning-bolt-outline", cat: "Gardena", w: 0.42, d: 0.55, h: 0.17, color: "#5d666b", parts: [
+    // A low ramp the mower drives onto, the charging hood with its contacts at the back
+    plan(0, 0, 1, 1, 0, 0.12, "dark", [[0.06, 0, 0.04], [0.94, 0, 0.04], [1, 0.7, 0.06], [0.85, 1, 0.05], [0.15, 1, 0.05], [0, 0.7, 0.06]], { bevel: 0.006 }),
+    plan(0.12, 0, 0.88, 0.32, 0.1, 1, "main", [[0, 0, 0.04], [1, 0, 0.04], [1, 0.75, 0.05], [0, 0.75, 0.05]], { bevel: 0.02 }),
+    plan(0.12, 0.02, 0.88, 0.32, 0.86, 0.92, "gardena", [[0, 0, 0.04], [1, 0, 0.04], [1, 0.75, 0.05], [0, 0.75, 0.05]]),
+    box(0.4, 0.24, 0.6, 0.27, 0.35, 0.55, "metal"), cyl(0.48, 0.12, 0.52, 0.16, 1, 1.03, "led")] },
   air_purifier: { label: "Air purifier", icon: "mdi:air-purifier", cat: "Appliances", w: 0.3, d: 0.3, h: 0.6, color: COLORS.white, parts: [
     cyl(0, 0, 1, 1, 0, 1, "main"), cyl(0.12, 0.12, 0.88, 0.88, 1, 1.02, "dark")] },
   dehumidifier: { label: "Dehumidifier", icon: "mdi:air-humidifier", cat: "Appliances", w: 0.35, d: 0.25, h: 0.55, color: COLORS.white, parts: [
@@ -1356,7 +1390,7 @@ export const CATALOG = {
     box(0, 0, 1, 1, 0, 1, "main")] },
 };
 
-export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Samsung", "DALI", "Apple", "NAD", "Sony", "Ligne Roset", "Eufy", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
+export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Samsung", "DALI", "Apple", "NAD", "Sony", "Ligne Roset", "Eufy", "Gardena", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
 
 /** Categories shown inside another one in the catalog (a brand's range under its kind of thing). */
 export const SUBCATEGORIES = {
@@ -1364,6 +1398,7 @@ export const SUBCATEGORIES = {
   "Philips Hue": "Lighting",
   "Ligne Roset": "Living",
   Eufy: "Security",
+  Gardena: "Garden",
 };
 
 export const catalogItem = (type) => CATALOG[type] || CATALOG.box;
@@ -1718,7 +1753,7 @@ export function furnitureSvg(f, { activeScreen = false, glowColor = null, tvPlay
         const [a, b] = [Math.min(...us), Math.max(...us)];
         return `<rect x="${lx}" y="${(a - 0.5) * f.d}" width="${w}" height="${(b - a) * f.d}" rx="${opts?.bevel || 0}" fill="${fill}"/>`;
       }
-      return shape === "box"
+      return shape === "box" || (shape === "cyl" && opts === "side")
         ? `<rect${cls} x="${lx}" y="${ly}" width="${w}" height="${h}" fill="${fill}"/>`
         : `<ellipse cx="${lx + w / 2}" cy="${ly + h / 2}" rx="${w / 2}" ry="${h / 2}" fill="${fill}"/>`;
     })
@@ -1855,6 +1890,7 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
     }
     let geo;
     if (shape === "box") geo = new THREE.BoxGeometry(1, 1, 1);
+    else if (shape === "cyl" && flag === "side") geo = new THREE.CylinderGeometry(0.5, 0.5, 1, 32).rotateZ(Math.PI / 2); // a wheel on its axle
     else if (shape === "cyl" && (flag === "front" || flag === "drum" || flag === "load")) geo = new THREE.CylinderGeometry(0.5, 0.5, 1, 32).rotateX(Math.PI / 2); // a knob facing forward
     else if (shape === "cyl") geo = new THREE.CylinderGeometry(0.5, 0.5, 1, 28, 1, key === "shade" && flag !== "solid");
     else geo = new THREE.SphereGeometry(0.5, 24, 16);

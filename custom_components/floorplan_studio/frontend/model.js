@@ -302,7 +302,7 @@ export function stackFloors(floors) {
 
 const ACTIVE_STATES = new Set([
   "on", "open", "opening", "closing", "home", "playing", "unlocked",
-  "heat", "cool", "heat_cool", "auto", "dry", "fan_only", "cleaning", "detected",
+  "heat", "cool", "heat_cool", "auto", "dry", "fan_only", "cleaning", "mowing", "detected",
 ]);
 
 const TOGGLE_DOMAINS = new Set([
@@ -675,7 +675,7 @@ export const COMPASS_STYLE = `
 // ---------- entity palette ----------
 
 const DOMAIN_ORDER = [
-  "light", "switch", "fan", "cover", "climate", "media_player", "lock", "vacuum",
+  "light", "switch", "fan", "cover", "climate", "media_player", "lock", "vacuum", "lawn_mower",
   "camera", "binary_sensor", "sensor", "input_boolean", "button", "scene", "script",
 ];
 

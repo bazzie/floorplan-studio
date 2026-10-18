@@ -2147,8 +2147,9 @@ export class FpsView3D extends HTMLElement {
           if (light) u.uColor.value.set(light.color);
           if (!u.uTime.value) u.uTime.value = performance.now() / 1000;
         }
-        // Media players show sound rings instead; a tint would muddy black speakers
-        const tint = on && !d.def.screen && !d.def.light && !light && domainOf(d.f.entity_id) !== "media_player";
+        // Media players show sound rings instead; a tint would muddy black speakers (and robots
+        // show they're at work by driving)
+        const tint = on && !d.def.screen && !d.def.light && !d.def.robot && !light && domainOf(d.f.entity_id) !== "media_player";
         // A heating radiator warms up to orange-red, more so the harder it heats (e.g. Tado's
         // heating power %); a glow alone would wash out to white on a white radiator
         const heat = tint && d.def.heater ? heatLevel(st) : 0;
