@@ -2,7 +2,7 @@
 import * as THREE from "./vendor/three.module.min.js";
 import { OrbitControls } from "./vendor/OrbitControls.js";
 import { currentLanguage, t } from "./i18n.js";
-import { needsMeasurement, quality, qualityMode, setMeasuredQuality, setSlowInUse } from "./quality.js";
+import { needsMeasurement, quality, qualityMode, setMeasuredQuality } from "./quality.js";
 import {
   soundArea,
   COMPASS_STYLE,
@@ -603,10 +603,9 @@ export class FpsView3D extends HTMLElement {
     this._setMeasured(median > 40 ? "low" : "high");
   }
 
-  /** Use a measured profile now (tells the panel); `keep`: for this device from now on. */
-  _setMeasured(name, keep = true) {
-    if (keep) setMeasuredQuality(name);
-    else setSlowInUse();
+  /** Keep a measured profile for this device and use it now (tells the panel). */
+  _setMeasured(name) {
+    setMeasuredQuality(name);
     if (qualityMode() === "auto" && name !== this._q?.name) {
       this.applyQuality();
       this.dispatchEvent(new CustomEvent("fps-quality", { bubbles: true, composed: true, detail: { name } }));
@@ -717,9 +716,12 @@ export class FpsView3D extends HTMLElement {
    * Dynamic resolution: a frame should be on screen soon after it's asked for. When that
    * takes over 50 ms on average (under ~20 frames a second while moving), draw fewer pixels
    * (down to half the screen's resolution); the picture gets a little softer, moving it
-   * smooth. Measured from asking to drawing, not between frames: with a busy Home
-   * Assistant, states change every few hundred milliseconds and each change draws one
-   * frame, which says nothing about how fast the device draws.
+   * smooth. Once frames come quickly again (under 25 ms), back up to full resolution.
+   * Measured from asking to drawing, not between frames: with a busy Home Assistant,
+   * states change every few hundred milliseconds and each change draws one frame, which
+   * says nothing about how fast the device draws. This never switches profile: a slow
+   * stretch in use (the computer busy with something else, a laptop saving battery) says
+   * little about the device; only the measurement when 3D first opens picks light.
    */
   _watchFrameRate(requested) {
     const wait = performance.now() - requested;
@@ -729,15 +731,14 @@ export class FpsView3D extends HTMLElement {
     if (gaps.length < 30) return;
     const average = gaps.reduce((a, b) => a + b, 0) / gaps.length;
     this._frameGaps = [];
-    if (average > 50 && this._pixelRatio > 0.5) {
-      this._pixelRatio = Math.max(0.5, this._pixelRatio * 0.75);
-      this._renderer.setPixelRatio(this._pixelRatio);
-      this._resize();
-    } else if (average > 50 && this._q?.name === "high" && qualityMode() === "auto") {
-      // Still too slow at the lowest resolution: switch to the light profile, until the
-      // page is loaded again
-      this._setMeasured("low", false);
-    }
+    const full = Math.min(window.devicePixelRatio || 1, this._q.pixelRatio);
+    let ratio = this._pixelRatio;
+    if (average > 50) ratio = Math.max(0.5, ratio * 0.75);
+    else if (average < 25) ratio = Math.min(full, ratio / 0.75);
+    if (ratio === this._pixelRatio) return;
+    this._pixelRatio = ratio;
+    this._renderer.setPixelRatio(ratio);
+    this._resize();
   }
 
   /** Turn the compass with the camera so N points at the house's north. */

@@ -2,6 +2,10 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.13 (2026-10-18)
+
+- 3D: no switch to light quality while in use; resolution comes back
+
 ## 0.5.12 (2026-10-18)
 
 - Washers and dryers show as off when unavailable

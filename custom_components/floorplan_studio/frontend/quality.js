@@ -2,7 +2,7 @@
 // little memory: there the views use a lighter profile (fewer pixels, simpler shadows,
 // fewer lights, slower animation, no blur). "Automatic" decides per device, in order:
 //   1. a measurement made earlier on this device (see view3d.js: the first time the 3D
-//      view opens on a GPU we don't know, and when it stays slow while in use),
+//      view opens on a GPU we don't know; in use, the view only lowers its resolution),
 //   2. the GPU's model, which Chromium-based browsers report (Chrome, Edge, and the
 //      Android WebView of the Home Assistant app and kiosk browsers); Safari and the iOS
 //      app only say "Apple GPU", Firefox only a rough class,
@@ -146,12 +146,6 @@ export const measuredQuality = () => {
 
 export const setMeasuredQuality = (name) => writePref(MEASURED, name);
 
-// Too slow while in use (see view3d.js): light until the page is loaded again. Not kept, as
-// one slow stretch (a busy computer, a laptop saving battery) says little about the device.
-let slowInUse = false;
-export const setSlowInUse = () => {
-  slowInUse = true;
-};
 
 /** Should the 3D view measure this device? (automatic, nothing known about its GPU, not measured yet) */
 export const needsMeasurement = () => qualityMode() === "auto" && !measuredQuality() && !classifyGpu(gpuInfo()?.renderer);
@@ -172,7 +166,6 @@ export const setQualityMode = (mode) => writePref("quality", QUALITY_MODES.inclu
  */
 export function autoQuality() {
   const measured = measuredQuality();
-  if (slowInUse) return { name: "low", reason: "measured" };
   if (measured) return { name: measured, reason: "measured" };
   const info = gpuInfo();
   const byGpu = classifyGpu(info?.renderer);
