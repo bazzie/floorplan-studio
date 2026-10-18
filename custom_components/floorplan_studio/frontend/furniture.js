@@ -158,6 +158,29 @@ const tube = (c, points, radius = 0.015) => ["tube", 0, 0.5, 1, 0.5, 0, 1, c, { 
 // bottom), with an optional third value rounding that corner by so many metres. `bevel`
 // (metres) rounds the edges of its ends.
 const profile = (x0, y0, x1, y1, z0, z1, c, points, bevel = 0) => ["profile", x0, y0, x1, y1, z0, z1, c, { points, bevel }];
+// Part with a shaped footprint, raised from z0 to z1 (a rounded speaker, a triangular one):
+// `points` outline it as [x, y] shares of the part's width and depth (0 = left, back), with an
+// optional third value rounding that corner by so many metres; `bevel` (metres) rounds its top
+// and bottom edges, `holes` are outlines cut out of it.
+const plan = (x0, y0, x1, y1, z0, z1, c, points, { bevel = 0, holes = [] } = {}) => ["plan", x0, y0, x1, y1, z0, z1, c, { points, bevel, holes }];
+// The same with the outline seen from the front ([x, z] shares of width and height), pushed
+// from back to front: a subwoofer with a tunnel through it.
+const front = (x0, y0, x1, y1, z0, z1, c, points, { bevel = 0, holes = [] } = {}) => ["front", x0, y0, x1, y1, z0, z1, c, { points, bevel, holes }];
+// Outlines for `plan`: a slice of a circle beyond a chord (`side` -1 left, 1 right; `from`
+// the chord's distance from the centre as a share of the radius), and an hourglass (pinched
+// in the middle by `pinch`, its ends rounded).
+const circleSlice = (side, from, n = 18) => {
+  const a = Math.acos(from);
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = -a + (2 * a * i) / n;
+    return [0.5 + 0.5 * side * Math.cos(t), 0.5 + 0.5 * Math.sin(t)];
+  });
+};
+const hourglass = (pinch, n = 24) => {
+  const half = (u) => 0.5 * (1 - pinch * Math.sin(Math.PI * u) ** 2) * (1 - Math.abs(2 * u - 1) ** 5) ** 0.2;
+  const us = Array.from({ length: n + 1 }, (_, i) => 0.5 - 0.5 * Math.cos((Math.PI * i) / n)); // denser at the ends
+  return [...us.map((u) => [u, 0.5 + half(u)]), ...us.slice(1, -1).reverse().map((u) => [u, 0.5 - half(u)])];
+};
 
 /** Arc floor lamp: marble base, a steel arch curving over, and a shade at its end. */
 function arcLamp(globe) {
@@ -906,20 +929,45 @@ export const CATALOG = {
 
   // ----- Sonos (real dimensions; `z` = default height of the surface it stands on) -----
   sonos_era100: { label: "Era 100", icon: "mdi:speaker", cat: "Sonos", speaker: true, surround: true, w: 0.12, d: 0.13, h: 0.183, z: 0.75, color: SONOS_BLACK, media: true, parts: [
-    cyl(0, 0.04, 1, 0.96, 0, 1, "main"), box(0.06, 0, 0.94, 1, 0, 1, "main"),
-    box(0.06, 0.92, 0.94, 1.0, 0.05, 0.95, "main2"), box(0.25, 0.25, 0.75, 0.6, 1, 1.02, "dark")] },
+    // Softly rounded column, the grille all round; on top a groove (the volume slider) with
+    // play/pause behind it, the status light at the front
+    plan(0.06, 0.06, 0.94, 0.94, 0, 0.03, "main3", roundRect(0, 0, 1, 1, 0.04)),
+    plan(0, 0, 1, 1, 0.02, 0.965, "main_grille", roundRect(0, 0, 1, 1, 0.048), { bevel: 0.006 }),
+    plan(0.01, 0.01, 0.99, 0.99, 0.95, 1, "main", roundRect(0, 0, 1, 1, 0.047), { bevel: 0.004 }),
+    box(0.22, 0.56, 0.78, 0.63, 1, 1.004, "main3"), cyl(0.46, 0.38, 0.54, 0.46, 1, 1.008, "main3"),
+    cyl(0.49, 0.8, 0.51, 0.82, 1, 1.008, "light")] },
   sonos_era300: { label: "Era 300", icon: "mdi:speaker", cat: "Sonos", speaker: true, surround: true, w: 0.26, d: 0.185, h: 0.16, z: 0.75, color: SONOS_BLACK, media: true, parts: [
-    box(0, 0.05, 1, 0.95, 0, 0.85, "main"), cyl(0.04, 0, 0.96, 1, 0.15, 1, "main"),
-    box(0.1, 0.9, 0.9, 1.0, 0.1, 0.9, "main2"), box(0.3, 0.3, 0.7, 0.55, 1, 1.02, "dark")] },
+    // From the front an hourglass (taller at its ends than in the middle), the grille wrapping
+    // it, its front and back edges strongly rounded; the controls on top in the middle
+    front(0, 0, 1, 1, 0, 1, "main_grille", hourglass(0.24), { bevel: 0.022 }),
+    box(0.42, 0.3, 0.58, 0.36, 0.868, 0.884, "main3"), cyl(0.485, 0.62, 0.515, 0.66, 0.868, 0.886, "light")] },
   sonos_one: { label: "One / One SL", icon: "mdi:speaker", cat: "Sonos", speaker: true, surround: true, w: 0.12, d: 0.12, h: 0.161, z: 0.75, color: SONOS_BLACK, media: true, parts: [
-    box(0, 0, 1, 1, 0, 1, "main"), box(0.04, 0.9, 0.96, 1.0, 0.05, 0.95, "main2"), box(0.2, 0.2, 0.8, 0.8, 1, 1.02, "dark")] },
+    // A rounded square column: the grille wraps it, a flat top with touch controls
+    // (volume down, play/pause, volume up) and the status light at the front
+    plan(0.05, 0.05, 0.95, 0.95, 0, 0.04, "main3", roundRect(0, 0, 1, 1, 0.024)),
+    plan(0, 0, 1, 1, 0.03, 0.965, "main_grille", roundRect(0, 0, 1, 1, 0.03), { bevel: 0.004 }),
+    plan(0.01, 0.01, 0.99, 0.99, 0.95, 1, "main", roundRect(0, 0, 1, 1, 0.029), { bevel: 0.003 }),
+    cyl(0.45, 0.45, 0.55, 0.55, 1, 1.01, "main3"), cyl(0.22, 0.48, 0.26, 0.52, 1, 1.008, "main3"), cyl(0.74, 0.48, 0.78, 0.52, 1, 1.008, "main3"),
+    cyl(0.485, 0.77, 0.515, 0.8, 1, 1.008, "light")] },
   sonos_five: { label: "Five", icon: "mdi:speaker", cat: "Sonos", speaker: true, surround: true, w: 0.364, d: 0.154, h: 0.203, z: 0.75, color: SONOS_BLACK, media: true, parts: [
-    box(0, 0, 1, 1, 0, 1, "main"), box(0.03, 0.88, 0.97, 1.0, 0.06, 0.94, "main2"), box(0.35, 0.3, 0.65, 0.7, 1, 1.02, "dark")] },
+    // Wide, softly rounded body; the grille covers the front and wraps round its corners,
+    // touch controls on top
+    plan(0, 0, 1, 0.92, 0, 1, "main", roundRect(0, 0, 1, 1, 0.03), { bevel: 0.006 }),
+    plan(0.004, 0.8, 0.996, 1, 0.03, 0.97, "main_grille", [[0, 0], [1, 0], [1, 1, 0.03], [0, 1, 0.03]], { bevel: 0.004 }),
+    cyl(0.48, 0.42, 0.52, 0.52, 1, 1.008, "main3"), cyl(0.43, 0.45, 0.45, 0.49, 1, 1.006, "main3"), cyl(0.55, 0.45, 0.57, 0.49, 1, 1.006, "main3"),
+    cyl(0.495, 0.66, 0.505, 0.69, 1, 1.006, "light")] },
   sonos_arc: { label: "Arc / Arc Ultra", icon: "mdi:soundbar", cat: "Sonos", speaker: true, homeTheater: true, w: 1.14, d: 0.116, h: 0.087, z: 0.5, color: SONOS_BLACK, media: true, parts: [
-    cyl(0, 0, 0.1, 1, 0, 1, "main"), cyl(0.9, 0, 1, 1, 0, 1, "main"), box(0.05, 0, 0.95, 1, 0, 1, "main"),
-    box(0.05, 0.85, 0.95, 1.0, 0.1, 0.9, "main2"), box(0.45, 0.3, 0.55, 0.6, 1, 1.03, "dark")] },
+    // Seen from the side a flat-bottomed ellipse, the grille wrapping it from the back over
+    // the top to the front; rounded ends. Touch controls and the status light on top.
+    profile(0, 0, 1, 1, 0, 1, "main_grille", [[0.03, 0, 0.012], [0.97, 0, 0.012], [1, 0.3, 0.03], [0.8, 0.85, 0.035], [0.45, 1, 0.04], [0.08, 0.82, 0.035], [0, 0.35, 0.03]], 0.011),
+    box(0.04, 0.12, 0.96, 0.88, -0.01, 0.01, "main3"),
+    box(0.485, 0.5, 0.515, 0.56, 0.99, 1.012, "main3"), box(0.497, 0.62, 0.503, 0.66, 0.97, 0.995, "light")] },
   sonos_beam: { label: "Beam", icon: "mdi:soundbar", cat: "Sonos", speaker: true, homeTheater: true, w: 0.651, d: 0.1, h: 0.069, z: 0.5, color: SONOS_BLACK, media: true, parts: [
-    box(0, 0, 1, 1, 0, 1, "main"), box(0.01, 0.85, 0.99, 1.0, 0.1, 0.9, "main2"), box(0.44, 0.3, 0.56, 0.6, 1, 1.03, "dark")] },
+    // Rounded bar, the grille wrapping front, back and ends; a smooth panel on top with the
+    // touch controls and the status light
+    profile(0, 0, 1, 1, 0, 1, "main_grille", roundRect(0, 0, 1, 1, 0.022), 0.012),
+    profile(0.03, 0.12, 0.97, 0.88, 0.97, 1.012, "main", roundRect(0, 0, 1, 1, 0.006), 0.004),
+    box(0.47, 0.42, 0.53, 0.52, 1.012, 1.02, "main3"), box(0.497, 0.62, 0.503, 0.66, 1.012, 1.02, "light")] },
   sonos_playbar: { label: "Playbar", icon: "mdi:soundbar", cat: "Sonos", speaker: true, homeTheater: true, w: 0.9, d: 0.14, h: 0.085, z: 0.5, color: "#8e9196", media: true, parts: [
     // Seen from the side a rectangle with four rounded corners, wrapped in black speaker
     // cloth. Two extruded aluminium edges run along diagonally opposite corners (the wider
@@ -933,21 +981,50 @@ export const CATALOG = {
     profile(0, 0, 0.018, 1, 0, 1, "grille", roundRect(0, 0, 1, 1, 0.018), 0.004),
     profile(0.982, 0, 1, 1, 0, 1, "grille", roundRect(0, 0, 1, 1, 0.018), 0.004)] },
   sonos_ray: { label: "Ray", icon: "mdi:soundbar", cat: "Sonos", speaker: true, homeTheater: true, w: 0.559, d: 0.095, h: 0.071, z: 0.5, color: SONOS_BLACK, media: true, parts: [
-    box(0, 0, 1, 1, 0, 1, "main"), box(0.02, 0.85, 0.98, 1.0, 0.1, 0.65, "main2"), box(0.44, 0.3, 0.56, 0.6, 1, 1.03, "dark")] },
+    // Seen from the side: a flat top that overhangs the grille, which slopes back towards the
+    // bottom; touch controls and the status light along the top front
+    profile(0, 0, 1, 1, 0, 1, "main", [[0, 0, 0.006], [0.78, 0, 0.004], [0.9, 0.72], [1, 0.74, 0.004], [1, 1, 0.008], [0, 1, 0.008]], 0.005),
+    profile(0.02, 0, 0.98, 1, 0, 1, "main_grille", [[0.785, 0.03], [0.81, 0.03], [0.925, 0.7], [0.9, 0.7]]),
+    box(0.47, 0.72, 0.53, 0.84, 1, 1.012, "main3"), box(0.497, 0.995, 0.503, 1.003, 0.8, 0.9, "light")] },
   sonos_sub: { label: "Sub", icon: "mdi:surround-sound", cat: "Sonos", speaker: true, sub: true, w: 0.402, d: 0.158, h: 0.389, color: SONOS_BLACK, media: true, parts: [
-    // the Sub's signature hole straight through the middle
-    box(0, 0, 1, 1, 0, 0.18, "main"), box(0, 0, 1, 1, 0.82, 1, "main"),
-    box(0, 0, 0.18, 1, 0.18, 0.82, "main"), box(0.82, 0, 1, 1, 0.18, 0.82, "main")] },
+    // Glossy rounded block with the tunnel straight through; its two woofers face each other
+    // across the tunnel (top and bottom). Low feet.
+    front(0, 0, 1, 1, 0.02, 1, "main", roundRect(0, 0, 1, 1, 0.04), { bevel: 0.01, holes: [roundRect(0.22, 0.28, 0.78, 0.72, 0.05)] }),
+    box(0.3, 0.12, 0.7, 0.88, 0.279, 0.285, "main3"), box(0.3, 0.12, 0.7, 0.88, 0.715, 0.721, "main3"),
+    box(0.06, 0.15, 0.2, 0.85, 0, 0.02, "main3"), box(0.8, 0.15, 0.94, 0.85, 0, 0.02, "main3")] },
   sonos_sub_mini: { label: "Sub Mini", icon: "mdi:surround-sound", cat: "Sonos", speaker: true, sub: true, w: 0.23, d: 0.23, h: 0.305, color: SONOS_BLACK, media: true, parts: [
-    cyl(0, 0, 1, 1, 0, 1, "main"), cyl(0.35, 0.35, 0.65, 0.65, 1, 1.01, "dark")] },
+    // A column with a slot right through the middle (front to back); the woofers face each
+    // other across it
+    cyl(0, 0, 1, 1, 0, 0.4, "main"), cyl(0, 0, 1, 1, 0.6, 1, "main"),
+    plan(0, 0, 1, 1, 0.4, 0.6, "main", circleSlice(-1, 0.45)), plan(0, 0, 1, 1, 0.4, 0.6, "main", circleSlice(1, 0.45)),
+    cyl(0.25, 0.25, 0.75, 0.75, 0.4, 0.404, "main3"), cyl(0.25, 0.25, 0.75, 0.75, 0.596, 0.6, "main3"),
+    cyl(0.485, 0.47, 0.515, 0.53, 1, 1.006, "light")] },
   sonos_move: { label: "Move 2", icon: "mdi:speaker-bluetooth", cat: "Sonos", speaker: true, w: 0.16, d: 0.127, h: 0.241, color: SONOS_BLACK, media: true, parts: [
-    cyl(0, 0, 1, 1, 0, 1, "main"), box(0.3, 0.9, 0.7, 1.02, 0.85, 0.95, "dark"), box(0.25, 0.3, 0.75, 0.6, 1, 1.02, "dark")] },
+    // Oval column narrowing a little to the top, the grille all round; a flat top with the
+    // touch controls, and the handle recessed into the back at the top
+    lathe(0, 0, 1, 1, 0.02, 0.96, "main_grille", [[0.95, 0], [1, 0.05], [1, 0.7], [0.95, 1]]),
+    cyl(0.03, 0.03, 0.97, 0.97, 0, 0.025, "main3"), cyl(0.025, 0.025, 0.975, 0.975, 0.955, 1, "main"),
+    box(0.3, 0, 0.7, 0.12, 0.8, 0.94, "main3"),
+    cyl(0.46, 0.45, 0.54, 0.55, 1, 1.008, "main3"), cyl(0.49, 0.74, 0.51, 0.77, 1, 1.008, "light")] },
   sonos_roam: { label: "Roam 2", icon: "mdi:speaker-bluetooth", cat: "Sonos", speaker: true, w: 0.062, d: 0.06, h: 0.168, z: 0.75, color: SONOS_BLACK, media: true, parts: [
-    cyl(0, 0, 1, 1, 0, 1, "main"), box(0.2, 0.2, 0.8, 0.8, 1, 1.02, "dark")] },
+    // Upright triangular prism with rounded corners, a flat face to the front and the grille
+    // round it; the buttons on the top end
+    plan(0, 0, 1, 1, 0, 0.035, "main", [[0, 1, 0.012], [0.5, 0, 0.014], [1, 1, 0.012]], { bevel: 0.003 }),
+    plan(0, 0, 1, 1, 0.025, 0.975, "main_grille", [[0, 1, 0.012], [0.5, 0, 0.014], [1, 1, 0.012]], { bevel: 0.002 }),
+    plan(0, 0, 1, 1, 0.965, 1, "main", [[0, 1, 0.012], [0.5, 0, 0.014], [1, 1, 0.012]], { bevel: 0.003 }),
+    cyl(0.42, 0.5, 0.58, 0.66, 1, 1.006, "main3"), cyl(0.47, 0.76, 0.53, 0.82, 1, 1.006, "light")] },
   sonos_amp: { label: "Amp", icon: "mdi:amplifier", cat: "Sonos", w: 0.217, d: 0.217, h: 0.064, z: 0.5, color: SONOS_BLACK, media: true, parts: [
-    box(0, 0, 1, 1, 0, 1, "main"), box(0.4, 0.4, 0.6, 0.6, 1, 1.03, "dark")] },
+    // Low square block with rounded corners; on top an inset panel with the touch controls,
+    // the status light at the front
+    plan(0, 0, 1, 1, 0, 1, "main", roundRect(0, 0, 1, 1, 0.024), { bevel: 0.004 }),
+    plan(0.08, 0.08, 0.92, 0.92, 0.99, 1.004, "main3", roundRect(0, 0, 1, 1, 0.016)),
+    cyl(0.47, 0.47, 0.53, 0.53, 1.004, 1.012, "main"), cyl(0.38, 0.48, 0.42, 0.52, 1.004, 1.01, "main"), cyl(0.58, 0.48, 0.62, 0.52, 1.004, 1.01, "main"),
+    cyl(0.49, 0.8, 0.51, 0.82, 1.004, 1.01, "light")] },
   sonos_port: { label: "Port", icon: "mdi:cast-audio", cat: "Sonos", w: 0.136, d: 0.136, h: 0.042, z: 0.5, color: SONOS_BLACK, media: true, parts: [
-    box(0, 0, 1, 1, 0, 1, "main"), cyl(0.42, 0.42, 0.58, 0.58, 1, 1.03, "light")] },
+    // Small flat square with rounded corners, the status light at the front
+    plan(0, 0, 1, 1, 0, 1, "main", roundRect(0, 0, 1, 1, 0.016), { bevel: 0.003 }),
+    plan(0.1, 0.1, 0.9, 0.9, 0.99, 1.004, "main3", roundRect(0, 0, 1, 1, 0.01)),
+    box(0.47, 0.995, 0.53, 1.003, 0.4, 0.6, "light")] },
 
   // ----- Lighting -----
   pendant: { label: "Pendant, drum", icon: "mdi:ceiling-light", cat: "Lighting", ceiling: true, w: 0.45, d: 0.45, h: 0.9, color: COLORS.dark,
@@ -1628,6 +1705,13 @@ export function furnitureSvg(f, { activeScreen = false, glowColor = null, tvPlay
         return `<path fill="${fill}" d="M${ox0},${oy0} A${rx * outer},${ry * outer} 0 ${large} 1 ${ox1},${oy1}
           L${ix1},${iy1} A${rx * inner},${ry * inner} 0 ${large} 0 ${ix0},${iy0} Z"/>`;
       }
+      if (shape === "plan") {
+        // Seen from above: its outline (holes left open)
+        const at = ([u, v, r = 0]) => [(x0 + u * (x1 - x0) - 0.5) * f.w, (y0 + v * (y1 - y0) - 0.5) * f.d, r];
+        const d = [opts?.points || [], ...(opts?.holes || [])].filter((o) => o.length).map((o) => svgOutline(o.map(at))).join(" ");
+        return `<path${cls} d="${d}" fill="${fill}" fill-rule="evenodd"/>`;
+      }
+      if (shape === "front") return `<rect${cls} x="${lx}" y="${ly}" width="${w}" height="${h}" rx="${opts?.bevel || 0}" fill="${fill}"/>`;
       if (shape === "profile") {
         // Seen from above: its footprint, with the ends' rounding
         const us = (opts?.points || [[0], [1]]).map(([u]) => y0 + u * (y1 - y0));
@@ -1683,7 +1767,7 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
         roughness: key === "brass" || key === "chrome" ? 0.3 : key === "gloss" || key === "smoke" ? 0.15 : anodised ? 0.45 : metallic ? 0.4 : 0.8,
         metalness: key === "brass" ? 0.8 : metallic ? 0.5 : anodised ? 0.2 : 0,
       });
-      if (key === "grille") {
+      if (key === "grille" || key.endsWith("_grille")) {
         m.map = grilleTexture(THREE);
         m.roughness = 0.7;
       }
@@ -1724,6 +1808,10 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
     }
     if (shape === "profile") {
       group.add(profileMesh(THREE, f, [shape, x0, y0, x1, y1, z0, z1, key, flag], material(key)));
+      continue;
+    }
+    if (shape === "plan" || shape === "front") {
+      group.add(outlineMesh(THREE, f, [shape, x0, y0, x1, y1, z0, z1, key, flag], material(key)));
       continue;
     }
     if (shape === "tube") {
@@ -1928,27 +2016,7 @@ function grilleTexture(THREE) {
 function profileMesh(THREE, f, [, x0, y0, x1, y1, z0, z1, , { points = [], bevel = 0 } = {}], mat) {
   // Outline in the piece's depth (shape x, front = +) and height (shape y)
   const pts = points.map(([u, v, r = 0]) => [(y0 + u * (y1 - y0) - 0.5) * f.d, (z0 + v * (z1 - z0)) * f.h, r]);
-  const toward = (p, q, d) => {
-    const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
-    const k = Math.min(d, len / 2) / len;
-    return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k];
-  };
-  const outline = new THREE.Shape();
-  pts.forEach(([x, y, r], i) => {
-    const first = i === 0;
-    if (!r) {
-      if (first) outline.moveTo(x, y);
-      else outline.lineTo(x, y);
-      return;
-    }
-    // Round the corner: cut it back along both edges and curve through it
-    const a = toward([x, y], pts[(i + pts.length - 1) % pts.length], r);
-    const b = toward([x, y], pts[(i + 1) % pts.length], r);
-    if (first) outline.moveTo(a[0], a[1]);
-    else outline.lineTo(a[0], a[1]);
-    outline.quadraticCurveTo(x, y, b[0], b[1]);
-  });
-  outline.closePath();
+  const outline = roundedOutline(new THREE.Shape(), pts);
   const length = Math.max((x1 - x0) * f.w, 0.002);
   const bt = Math.max(0, Math.min(bevel, length / 2 - 0.0005));
   const geo = new THREE.ExtrudeGeometry(outline, {
@@ -1964,6 +2032,79 @@ function profileMesh(THREE, f, [, x0, y0, x1, y1, z0, z1, , { points = [], bevel
   mesh.receiveShadow = true;
   mesh.userData.furniture = f;
   return mesh;
+}
+
+/** Trace an outline ([x, y, corner radius]) into a THREE.Shape or Path, rounding the corners. */
+function roundedOutline(path, pts) {
+  const toward = (p, q, d) => {
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    const k = Math.min(d, len / 2) / len;
+    return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k];
+  };
+  pts.forEach(([x, y, r], i) => {
+    const first = i === 0;
+    if (!r) {
+      if (first) path.moveTo(x, y);
+      else path.lineTo(x, y);
+      return;
+    }
+    // Round the corner: cut it back along both edges and curve through it
+    const a = toward([x, y], pts[(i + pts.length - 1) % pts.length], r);
+    const b = toward([x, y], pts[(i + 1) % pts.length], r);
+    if (first) path.moveTo(a[0], a[1]);
+    else path.lineTo(a[0], a[1]);
+    path.quadraticCurveTo(x, y, b[0], b[1]);
+  });
+  path.closePath();
+  return path;
+}
+
+/**
+ * A `plan` part (footprint outline raised from z0 to z1) or a `front` part (outline seen
+ * from the front, pushed from y0 to y1), with rounded edges at both ends and holes.
+ */
+function outlineMesh(THREE, f, [shape, x0, y0, x1, y1, z0, z1, , { points = [], bevel = 0, holes = [] } = {}], mat) {
+  const up = shape === "plan";
+  // (plan: the shape's y runs to the back, so that after turning it upright the front faces +z)
+  const at = ([u, v, r = 0]) => up
+    ? [(x0 + u * (x1 - x0) - 0.5) * f.w, -(y0 + v * (y1 - y0) - 0.5) * f.d, r]
+    : [(x0 + u * (x1 - x0) - 0.5) * f.w, (z0 + v * (z1 - z0)) * f.h, r];
+  const outline = roundedOutline(new THREE.Shape(), points.map(at));
+  for (const hole of holes) outline.holes.push(roundedOutline(new THREE.Path(), hole.map(at)));
+  const length = Math.max(up ? (z1 - z0) * f.h : (y1 - y0) * f.d, 0.001);
+  const bt = Math.max(0, Math.min(bevel, length / 2 - 0.0003));
+  const geo = new THREE.ExtrudeGeometry(outline, {
+    depth: Math.max(length - 2 * bt, 0.0003), curveSegments: 10,
+    bevelEnabled: bt > 0, bevelThickness: bt, bevelSize: bt, bevelOffset: -bt, bevelSegments: 4,
+  });
+  if (up) {
+    geo.rotateX(-Math.PI / 2); // extrusion -> up
+    geo.translate(0, z0 * f.h + bt, 0);
+  } else {
+    geo.translate(0, 0, (y0 - 0.5) * f.d + bt);
+  }
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.furniture = f;
+  return mesh;
+}
+
+/** SVG path of an outline ([x, y, corner radius], plan coordinates), corners rounded as in 3D. */
+function svgOutline(pts) {
+  const toward = (p, q, d) => {
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    const k = Math.min(d, len / 2) / len;
+    return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k];
+  };
+  const n = (v) => v.toFixed(4);
+  return pts.map(([x, y, r], i) => {
+    const cmd = i === 0 ? "M" : "L";
+    if (!r) return `${cmd}${n(x)},${n(y)}`;
+    const a = toward([x, y], pts[(i + pts.length - 1) % pts.length], r);
+    const b = toward([x, y], pts[(i + 1) % pts.length], r);
+    return `${cmd}${n(a[0])},${n(a[1])} Q${n(x)},${n(y)} ${n(b[0])},${n(b[1])}`;
+  }).join(" ") + " Z";
 }
 
 /**

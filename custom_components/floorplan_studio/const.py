@@ -1,7 +1,7 @@
 """Constants for Floorplan Studio."""
 
 DOMAIN = "floorplan_studio"
-VERSION = "0.4.8"
+VERSION = "0.4.9"
 
 PANEL_URL_PATH = "floorplan-studio"
 PANEL_TITLE = "Floorplan"

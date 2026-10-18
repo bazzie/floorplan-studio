@@ -27,6 +27,8 @@ import {
   normalizeAngle,
   normalizeDoc,
   planEntities,
+  pointInPolygon,
+  polygonArea,
   readPref,
   removeDuplicateOpenings,
   round,
@@ -848,6 +850,7 @@ class FloorplanStudioPanel extends HTMLElement {
           <div class="stage"></div>
           <aside></aside>
           <datalist id="entities"></datalist>
+          <datalist id="entities-room"></datalist>
         </div>
       </div>`;
     this._root = this.shadowRoot.querySelector(".app");
@@ -1141,11 +1144,18 @@ class FloorplanStudioPanel extends HTMLElement {
     const num = (field, label, value, step = 0.05, min = 0) => `
       <div class="field"><label>${label}</label>
         <input type="number" data-field="${field}" value="${value ?? ""}" step="${step}" min="${min}"></div>`;
-    const entity = (field, label, value, hint = "", placeholder = "light.living_room") => `
+    // (`scope`: a piece's room, whose entities the suggestions are limited to, see _entityScope)
+    const entity = (field, label, value, hint = "", placeholder = "light.living_room", scope = null) => `
       <div class="field"><label>${label}</label>
-        <input list="entities" data-field="${field}" value="${escapeHtml(value || "")}" placeholder="${t("e.g. {example}", { example: placeholder })}" autocomplete="off">
+        <input list="${scope && !scope.all ? "entities-room" : "entities"}" data-field="${field}" value="${escapeHtml(value || "")}" placeholder="${t("e.g. {example}", { example: placeholder })}" autocomplete="off">
         ${hint ? `<span class="muted">${hint}</span>` : ""}
-        ${value && !this._hass.states[value] ? `<span class="warn">${t("Entity not found")}</span>` : ""}</div>`;
+        ${value && !this._hass.states[value] ? `<span class="warn">${t("Entity not found")}</span>` : ""}
+        ${scope ? `<label class="check"><input type="checkbox" data-entity-scope ${scope.all ? "checked" : ""} ${scope.ids.length ? "" : "disabled"}> ${t("Show all entities")}</label>
+          <span class="muted">${scope.ids.length
+            ? (scope.all ? t("Suggesting all entities.") : t("Suggesting the entities of {room} ({n}).", { room: escapeHtml(scope.name), n: scope.ids.length }))
+            : scope.room ? t("{room} isn't linked to an area with entities: suggesting all entities.", { room: escapeHtml(scope.name) })
+            : t("Not in a room: suggesting all entities.")}</span>` : ""}</div>`;
+    const scope = this._selection?.kind === "furniture" && item ? this._entityScope(item) : null;
     const del = `<div class="actions"><button class="btn danger" data-act="delete"><ha-icon icon="mdi:delete"></ha-icon>${t("Delete")}</button></div>`;
     let html = "";
 
@@ -1277,13 +1287,13 @@ class FloorplanStudioPanel extends HTMLElement {
             .map((a) => a.entity_id))];
           return `${entity("entity_id", t("Amplifier / receiver"), item.entity_id,
             t("The media player driving this speaker. It shows sound waves while that plays. For an amplifier that only reports on/off, the speaker follows the player on its selected input: a piece named after the input (e.g. \"Apple TV\"), or plays whenever the amplifier is on and not muted."),
-            "media_player.living_room_receiver")}
+            "media_player.living_room_receiver", scope)}
             ${amps.length ? `<div class="actions" style="margin:-4px 0 12px;flex-wrap:wrap">${amps.map((id) => `
               <button class="btn${id === item.entity_id ? " primary" : ""}" data-act="connect-speaker" data-entity="${escapeHtml(id)}">
                 <ha-icon icon="mdi:cable-data"></ha-icon>${escapeHtml(friendlyName(this._hass, id))}</button>`).join("")}</div>` : ""}`;
         })() : entity("entity_id", t("Entity"), item.entity_id, def.light
           ? t("A light makes this lamp glow and shine. Tip: drag an entity from a room's list onto the piece.")
-          : def.screen ? t("The screen lights up when this is on or playing.") : t("Tip: drag an entity from a room's list onto the piece."))}
+          : def.screen ? t("The screen lights up when this is on or playing.") : t("Tip: drag an entity from a room's list onto the piece."), undefined, scope)}
         ${def.av ? this._avSection(item, def) : ""}
         ${def.surround || def.sub ? this._surroundSection(item, def) : ""}
         ${def.homeTheater && domainOf(item.entity_id) === "media_player" ? this._bondedSection(item) : ""}
@@ -1399,6 +1409,30 @@ class FloorplanStudioPanel extends HTMLElement {
   }
 
   // ---------- entity palette (drag onto the plan) ----------
+
+  /**
+   * Which entities to suggest for a piece: those of the room it stands in (the smallest room
+   * around its middle, through the room's area), unless "Show all entities" is on or the room
+   * has none. { room, name, ids, all }
+   */
+  _entityScope(item) {
+    const p = [item.x, item.y];
+    const room = this._floor.rooms.filter((r) => pointInPolygon(p, r.points))
+      .sort((a, b) => polygonArea(a.points) - polygonArea(b.points))[0] || null;
+    const ids = room?.area_id ? sortEntities(this._hass, areaEntities(this._hass, room.area_id)) : [];
+    const all = !ids.length || readPref("entitiesAll", "0") === "1";
+    if (!all) this._syncRoomEntityList(ids, item.entity_id);
+    return { room, name: room?.name || t("this room"), ids, all };
+  }
+
+  /** The room's entities as the suggestions (and the linked one, wherever it is). */
+  _syncRoomEntityList(ids, current) {
+    const list = this.shadowRoot.getElementById("entities-room");
+    if (!list || !this._hass) return;
+    const shown = current && !ids.includes(current) && this._hass.states[current] ? [current, ...ids] : ids;
+    list.innerHTML = shown.filter((id) => this._hass.states[id])
+      .map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(this._hass.states[id].attributes.friendly_name || "")}</option>`).join("");
+  }
 
   _roomEntities(room) {
     if (!room?.area_id || this._selection?.kind !== "room") return null;
@@ -1856,6 +1890,11 @@ class FloorplanStudioPanel extends HTMLElement {
     if ((t.type === "number" || t.type === "range") && !Number.isFinite(value)) return;
 
     if (t.dataset.move) return; // read when "Move" is clicked
+    if (t.dataset.entityScope !== undefined) {
+      writePref("entitiesAll", t.checked ? "1" : "0");
+      this._renderInspector();
+      return;
+    }
     if (t.dataset.pref === "underlay") {
       writePref("underlay", value ? "1" : "0");
       this._renderInspector();

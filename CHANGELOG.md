@@ -2,6 +2,11 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.4.9 (2026-10-18)
+
+- Sonos: speakers modelled after the real products
+- Linked entity: suggest the entities of the piece's room
+
 ## 0.4.8 (2026-10-18)
 
 - Furniture catalog: Sonos under Multimedia, Philips Hue under Lighting
