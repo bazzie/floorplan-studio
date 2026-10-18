@@ -2,7 +2,7 @@
 import * as THREE from "./vendor/three.module.min.js";
 import { OrbitControls } from "./vendor/OrbitControls.js";
 import { currentLanguage, t } from "./i18n.js";
-import { needsMeasurement, quality, qualityMode, setMeasuredQuality } from "./quality.js";
+import { needsMeasurement, quality, qualityMode, setMeasuredQuality, setSlowInUse } from "./quality.js";
 import {
   soundArea,
   COMPASS_STYLE,
@@ -586,7 +586,7 @@ export class FpsView3D extends HTMLElement {
     this._measure = false;
     const gaps = [];
     let last = performance.now();
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 32; i++) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       if (!this.isConnected || document.hidden || !this._renderer) return; // not now: again next time
       this._renderer.render(this._scene, this._camera);
@@ -594,14 +594,17 @@ export class FpsView3D extends HTMLElement {
       gaps.push(now - last);
       last = now;
     }
-    const steady = gaps.slice(4); // the first frames compile shaders
-    const average = steady.reduce((a, b) => a + b, 0) / steady.length;
-    this._setMeasured(average > 40 ? "low" : "high");
+    // The first frames compile shaders (many with a lot of lamps); the median ignores a
+    // few stray slow frames as well
+    const steady = gaps.slice(8).sort((a, b) => a - b);
+    const median = steady[steady.length >> 1];
+    this._setMeasured(median > 40 ? "low" : "high");
   }
 
-  /** Keep a measured profile for this device and use it now (tells the panel). */
-  _setMeasured(name) {
-    setMeasuredQuality(name);
+  /** Use a measured profile now (tells the panel); `keep`: for this device from now on. */
+  _setMeasured(name, keep = true) {
+    if (keep) setMeasuredQuality(name);
+    else setSlowInUse();
     if (qualityMode() === "auto" && name !== this._q?.name) {
       this.applyQuality();
       this.dispatchEvent(new CustomEvent("fps-quality", { bubbles: true, composed: true, detail: { name } }));
@@ -731,8 +734,9 @@ export class FpsView3D extends HTMLElement {
       this._renderer.setPixelRatio(this._pixelRatio);
       this._resize();
     } else if (average > 50 && this._q?.name === "high" && qualityMode() === "auto") {
-      // Still too slow at the lowest resolution: switch to the light profile, for good
-      this._setMeasured("low");
+      // Still too slow at the lowest resolution: switch to the light profile, until the
+      // page is loaded again
+      this._setMeasured("low", false);
     }
   }
 

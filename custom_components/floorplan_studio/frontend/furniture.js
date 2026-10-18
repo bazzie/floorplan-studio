@@ -2694,12 +2694,19 @@ function waveChair() {
     return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, z];
   };
   const bar = 0.24;
+  // The seat: round at the back, inside the back's curve; where the arms end it runs out
+  // to the back's outside, so the arms come down onto its sides
+  const [arm0, arm1] = [170, 370];
+  const onBack = (deg, k) => [0.5 + 0.5 * k * Math.cos((deg * Math.PI) / 180), 0.56 + 0.56 * k * Math.sin((deg * Math.PI) / 180)];
+  const seatOutline = [];
+  for (let i = 0; i <= 16; i++) seatOutline.push(onBack(180 + (180 * i) / 16, 0.76));
+  seatOutline.push(onBack(arm1, 1), [0.985, 0.98, 0.07], [0.015, 0.98, 0.07], onBack(arm0, 1));
   return [
     ...legs.map(([a, b]) => rod("dark", a, b, 0.015, 0.008)),
     rod("dark", on(legs[0], bar), on(legs[3], bar), 0.005), rod("dark", on(legs[1], bar), on(legs[2], bar), 0.005),
     plan(0.15, 0.22, 0.85, 0.82, seat - 0.09, seat - 0.07, "dark", roundRect(0, 0, 1, 1, 0.03)), // frame under the seat
-    shell(0, 0, 1, 1.12, seat - 0.1, 1, "main", { start: 168, end: 372, inner: 0.82, low: 0.18 }),
-    plan(0.05, 0.1, 0.95, 0.99, seat - 0.085, seat, "main", roundRect(0, 0, 1, 1, 0.12), { bevel: 0.03 }),
+    shell(0, 0, 1, 1.12, seat - 0.085, 1, "main", { start: arm0, end: arm1, inner: 0.82, low: 0.2 }),
+    plan(0, 0, 1, 1, seat - 0.085, seat, "main", seatOutline, { bevel: 0.03 }),
   ];
 }
 

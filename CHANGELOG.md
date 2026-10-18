@@ -2,6 +2,12 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.8 (2026-10-18)
+
+- Wave chair: seat follows the back's curve
+- Low quality: lamps shade furniture by the way its faces turn
+- Automatic quality: don't keep a fast device on light for good
+
 ## 0.5.6 (2026-10-18)
 
 - Petite Friture Vertigo pendant in three sizes

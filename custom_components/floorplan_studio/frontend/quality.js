@@ -134,7 +134,9 @@ export function slowDevice() {
 
 // ---------- measurement ----------
 
-const MEASURED = "quality_measured"; // "low" | "high" (pref, per browser)
+// "low" | "high" (pref, per browser). v2: measured again since 0.5.8, as the first way also
+// kept a slow stretch in use, or the shaders compiling, as a slow device
+const MEASURED = "quality_measured_v2";
 
 /** The result of an earlier measurement on this device, or null. */
 export const measuredQuality = () => {
@@ -143,6 +145,13 @@ export const measuredQuality = () => {
 };
 
 export const setMeasuredQuality = (name) => writePref(MEASURED, name);
+
+// Too slow while in use (see view3d.js): light until the page is loaded again. Not kept, as
+// one slow stretch (a busy computer, a laptop saving battery) says little about the device.
+let slowInUse = false;
+export const setSlowInUse = () => {
+  slowInUse = true;
+};
 
 /** Should the 3D view measure this device? (automatic, nothing known about its GPU, not measured yet) */
 export const needsMeasurement = () => qualityMode() === "auto" && !measuredQuality() && !classifyGpu(gpuInfo()?.renderer);
@@ -163,6 +172,7 @@ export const setQualityMode = (mode) => writePref("quality", QUALITY_MODES.inclu
  */
 export function autoQuality() {
   const measured = measuredQuality();
+  if (slowInUse) return { name: "low", reason: "measured" };
   if (measured) return { name: measured, reason: "measured" };
   const info = gpuInfo();
   const byGpu = classifyGpu(info?.renderer);

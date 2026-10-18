@@ -25,6 +25,10 @@ const LAMP_SIZE = 0.3; // light stops getting stronger closer than this (as in v
 const DECAY = 1.6;
 const FURNITURE_FACING = 0.45;
 const SLOTS = 8; // lamps per floor whose light is worked out per pixel (the rest on the grid)
+// On a piece, a face turned away from the lamps gets this share of its light, one facing
+// them this much more (FURNITURE_FACING is the average)
+const FACE_AWAY = 0.3;
+const FACE_TOWARD = 1.4;
 const MAX_PIECE_LIGHT = 0.9; // most lamp light on a piece of furniture (see update) // a piece's faces turn every way: about this much of the light lands
 const WALL_SHADE = 0.22; // darkening of the floor right against a wall
 const WALL_SHADE_REACH = 0.35;
@@ -66,9 +70,18 @@ export function addLampLight(material, uniform) {
   const key = material.customProgramCacheKey;
   material.onBeforeCompile = (shader, renderer) => {
     before?.call(material, shader, renderer);
-    shader.uniforms.uLampLight = lampLights.get(material);
-    shader.fragmentShader = `uniform vec3 uLampLight;\n${shader.fragmentShader}`.replace(
-      "#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * uLampLight;");
+    const u = lampLights.get(material);
+    shader.uniforms.uLampLight = u;
+    shader.uniforms.uLampDir = u.dir || { value: [0, 0, 0] };
+    // Faces turned to the lamps get more, faces turned away less, so a piece keeps its
+    // shape under a lamp (round cushions, a sofa's rolls). uLampDir: where the light comes
+    // from, its length how much the lamps agree on that (0: from all sides, no shading)
+    shader.fragmentShader = `uniform vec3 uLampLight;\nuniform vec3 uLampDir;\n${shader.fragmentShader}`.replace(
+      "#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+  float lampAgree = length(uLampDir);
+  vec3 lampDir = lampAgree > 1e-3 ? normalize((viewMatrix * vec4(uLampDir, 0.0)).xyz) : vec3(0.0);
+  float lampFacing = mix(1.0, ${FACE_AWAY.toFixed(2)} + ${FACE_TOWARD.toFixed(2)} * max(dot(normal, lampDir), 0.0), lampAgree);
+  totalEmissiveRadiance += diffuseColor.rgb * uLampLight * lampFacing;`);
   };
   material.customProgramCacheKey = () => `${key?.call(material) ?? ""}|fps-lamp`;
   material.needsUpdate = true;
@@ -240,6 +253,7 @@ export class LightSurface {
 
   /** A piece of furniture: the light at `pos` ([x, y, z]) goes into `uniform`; `skip` is its own lamp. */
   addProbe(pos, uniform, skip) {
+    if (!uniform.dir) uniform.dir = { value: new this.THREE.Vector3() };
     this.probes.push({ pos, uniform, skip });
   }
 
@@ -373,7 +387,11 @@ export class LightSurface {
    * adds what the lamps add on top of that, as the screen shows it.
    */
   update(lamps, ambient) {
-    for (const p of this.probes) p.uniform.value.setRGB(0, 0, 0);
+    for (const p of this.probes) {
+      p.uniform.value.setRGB(0, 0, 0);
+      p.uniform.dir.value.set(0, 0, 0);
+      p.weight = 0;
+    }
     const strength = (l) => Math.max(...l.color) * l.power;
     const order = [...lamps].sort((a, b) => (a.cosOuter === null) - (b.cosOuter === null) || strength(b) - strength(a));
     if (this.bake) {
@@ -386,10 +404,18 @@ export class LightSurface {
       const [r, g, b] = lamp.color;
       pw.forEach((f, i) => {
         if (!f) return;
-        const c = this.probes[i].uniform.value;
+        const p = this.probes[i];
+        const c = p.uniform.value;
         c.r += r * f;
         c.g += g * f;
         c.b += b * f;
+        // where the light comes from, weighted by how much each lamp brings
+        const k = Math.max(r, g, b) * f;
+        const d = Math.hypot(lamp.pos[0] - p.pos[0], lamp.pos[1] - p.pos[1], lamp.pos[2] - p.pos[2]) || 1;
+        p.uniform.dir.value.x += ((lamp.pos[0] - p.pos[0]) / d) * k;
+        p.uniform.dir.value.y += ((lamp.pos[1] - p.pos[1]) / d) * k;
+        p.uniform.dir.value.z += ((lamp.pos[2] - p.pos[2]) / d) * k;
+        p.weight += k;
       });
       if (!this.bake) return;
       if (k < SLOTS) {
@@ -412,6 +438,7 @@ export class LightSurface {
     // A piece right under a lamp: no more light than turns a white surface white (more
     // only pushes a coloured one, like wood, to its brightest, most saturated hue)
     for (const p of this.probes) {
+      if (p.weight > 0) p.uniform.dir.value.multiplyScalar(1 / p.weight);
       const c = p.uniform.value;
       const top = Math.max(c.r, c.g, c.b);
       if (top > MAX_PIECE_LIGHT) c.multiplyScalar(MAX_PIECE_LIGHT / top);
