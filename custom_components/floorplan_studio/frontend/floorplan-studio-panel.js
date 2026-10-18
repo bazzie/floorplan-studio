@@ -37,7 +37,7 @@ import {
   writePref,
 } from "./model.js";
 
-import { CATALOG, CATEGORIES, SUBCATEGORIES, MIN_HEIGHT, MIN_SIZE, catalogItem, defaultBeamAngle, displayFeed, duplicateFurniture, newFurniture, tidyAvWiring } from "./furniture.js";
+import { CATALOG, CATEGORIES, SUBCATEGORIES, MIN_HEIGHT, MIN_SIZE, catalogItem, defaultBeamAngle, displayFeed, dockPose, duplicateFurniture, newFurniture, robotKind, tidyAvWiring, tidyDocks } from "./furniture.js";
 import { FLOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, floorFinish, isOutdoor, roofFinish, wallFinish } from "./materials.js";
 import { ROOF_TYPES, roofHeight } from "./roof.js";
 import { cleaningRoom, currentRoomSensor, mowingArea, vacuumRooms } from "./robot.js";
@@ -440,6 +440,7 @@ class FloorplanStudioPanel extends HTMLElement {
     tidyAvWiring(this._saved);
     this._doc = normalizeDoc(clone(data));
     tidyAvWiring(this._doc);
+    tidyDocks(this._doc);
     this._docVersion++;
     if (!this._floor) this._floorId = this._doc.floors[0]?.id;
     if (this._selection && !this._findSelected()) this._selection = null;
@@ -452,6 +453,7 @@ class FloorplanStudioPanel extends HTMLElement {
     tidyAvWiring(this._saved); // older wiring, saved with the next change
     this._doc = clone(data);
     tidyAvWiring(this._doc);
+    tidyDocks(this._doc);
     this._docVersion++;
     if (!this._doc.floors.find((f) => f.id === this._floorId)) {
       const sorted = [...this._doc.floors].sort((a, b) => a.level - b.level);
@@ -636,6 +638,7 @@ class FloorplanStudioPanel extends HTMLElement {
   }
 
   _afterChange(inspector = true) {
+    tidyDocks(this._doc); // robots stay on their station when it's moved
     this._dirty = true;
     this._scheduleSave();
     this._docVersion++;
@@ -1297,6 +1300,7 @@ class FloorplanStudioPanel extends HTMLElement {
         ${def.av ? this._avSection(item, def) : ""}
         ${def.surround || def.sub ? this._surroundSection(item, def) : ""}
         ${def.homeTheater && domainOf(item.entity_id) === "media_player" ? this._bondedSection(item) : ""}
+        ${def.robot ? this._dockField(item) : ""}
         ${def.robot === "mower" ? this._mowerSection(item) : def.robot && item.entity_id ? this._vacuumSection(item) : ""}
         ${item.entity_id ? `<div class="field"><label>${t("Tap action")}</label><select data-field="tap_action">
             ${tapOptions(this._hass, item, item.tap_action)}
@@ -1890,6 +1894,16 @@ class FloorplanStudioPanel extends HTMLElement {
     if ((t.type === "number" || t.type === "range") && !Number.isFinite(value)) return;
 
     if (t.dataset.move) return; // read when "Move" is clicked
+    if (t.dataset.field === "dock") {
+      const item = this._findSelected();
+      if (!item) return;
+      this._change(() => {
+        item.dock = t.value || null;
+        const dock = item.dock && floor.furniture.find((f) => f.id === item.dock);
+        if (dock) Object.assign(item, dockPose(item, dock));
+      });
+      return;
+    }
     if (t.dataset.entityScope !== undefined) {
       writePref("entitiesAll", t.checked ? "1" : "0");
       this._renderInspector();
@@ -2110,6 +2124,26 @@ class FloorplanStudioPanel extends HTMLElement {
   }
 
   /** A robot vacuum's rooms, each matched to a room of this floor (where it drives while cleaning that room). */
+  /** A robot's station (a vacuum's dock, a mower's charging station on this floor): it parks there. */
+  _dockField(item) {
+    const kind = robotKind(item);
+    const docks = this._floor.furniture.filter((f) => catalogItem(f.type).dock === kind)
+      .sort((a, b) => dist([a.x, a.y], [item.x, item.y]) - dist([b.x, b.y], [item.x, item.y]));
+    const label = (f) => `${f.name || t(catalogItem(f.type).label)} (${t("{d} m away", { d: dist([f.x, f.y], [item.x, item.y]).toFixed(1) })})`;
+    const name = kind === "mower" ? t("Charging station") : t("Dock");
+    return `<div class="field"><label>${name}</label>
+      ${docks.length ? `<select data-field="dock">
+        <option value="" ${item.dock ? "" : "selected"}>${t("Not linked")}</option>
+        ${docks.map((f) => `<option value="${escapeHtml(f.id)}" ${f.id === item.dock ? "selected" : ""}>${escapeHtml(item.dock === f.id ? f.name || t(catalogItem(f.type).label) : label(f))}</option>`).join("")}
+      </select>
+      <span class="muted">${item.dock
+        ? t("Parked on its station, and moves along when the station is moved. It comes back here after its work.")
+        : t("Link it to its station: it's put on it, and moves along when the station is moved.")}</span>`
+      : `<span class="muted">${kind === "mower"
+        ? t("Place a charging station (Garden › Gardena) on this floor to link the mower to it.")
+        : t("Place a vacuum dock (Appliances) on this floor to link the vacuum to it.")}</span>`}</div>`;
+  }
+
   /** A robot mower: which area it mows (the outdoor area its charging station is in). */
   _mowerSection(item) {
     const area = mowingArea(item, this._floor.rooms);

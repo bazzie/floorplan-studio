@@ -156,6 +156,18 @@ function random(m) {
   return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
 }
 
+/** A repeatable random spot well inside an area (null if none is found). */
+function spotInside(m, area) {
+  const pts = area.points;
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  for (let k = 0; k < 60; k++) {
+    const p = [Math.min(...xs) + random(m) * (Math.max(...xs) - Math.min(...xs)), Math.min(...ys) + random(m) * (Math.max(...ys) - Math.min(...ys))];
+    if (pointInPolygon(p, pts) && edgeDistance(p, pts) >= MOW_INSET) return p;
+  }
+  return null;
+}
+
 /**
  * Mow: drive straight on; at the edge, turn to a new random heading back into the area (as a
  * robot mower does at its boundary wire). From the station, first drive into the area.
@@ -244,8 +256,10 @@ export function robotPose(hass, piece, rooms, now = performance.now() / 1000) {
     m.pos = [m.pos[0] + ((target[0] - m.pos[0]) * step) / d, m.pos[1] + ((target[1] - m.pos[1]) * step) / d];
     return 0;
   };
+  const mower = domainOf(piece.entity_id) === "lawn_mower";
   if (state === "mowing") {
     m.roomKey = null;
+    m.out = true;
     const area = mowingArea(piece, rooms);
     const moving = area ? mow(m, area, dt) : false;
     return { x: m.pos[0], y: m.pos[1], rotation: m.rotation, moving };
@@ -278,13 +292,31 @@ export function robotPose(hass, piece, rooms, now = performance.now() / 1000) {
   }
   m.roomKey = null;
   if (state === "returning" || station === "returning") {
-    drive([piece.x, piece.y], SPEED * 1.5 * dt);
+    if (mower && !m.out) {
+      // Not seen mowing since the page opened: it's somewhere on its lawn, coming home
+      const area = mowingArea(piece, rooms);
+      const spot = area && spotInside(m, area);
+      if (spot) m.pos = spot;
+    }
+    m.out = true;
+    // (a mower finds its way back along its boundary wire: no hurry)
+    drive([piece.x, piece.y], (mower ? MOW_SPEED * 0.6 : SPEED * 1.5) * dt);
     const there = Math.hypot(piece.x - m.pos[0], piece.y - m.pos[1]) < 1e-3;
     if (there) m.rotation = home.rotation;
     return { x: m.pos[0], y: m.pos[1], rotation: m.rotation, moving: !there };
   }
-  if (["paused", "error"].includes(state)) return { x: m.pos[0], y: m.pos[1], rotation: m.rotation, moving: false };
+  if (["paused", "error"].includes(state)) {
+    if (mower && !m.out) {
+      // Stopped out on the lawn (not seen there since the page opened): somewhere on it
+      const area = mowingArea(piece, rooms);
+      const spot = area && spotInside(m, area);
+      if (spot) m.pos = spot;
+      m.out = true;
+    }
+    return { x: m.pos[0], y: m.pos[1], rotation: m.rotation, moving: false };
+  }
   // Docked (or busy at the station mid-clean): at its place on the plan
+  m.out = false;
   m.pos = [piece.x, piece.y];
   m.rotation = home.rotation;
   return home;

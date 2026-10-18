@@ -2073,6 +2073,12 @@ export class FpsView3D extends HTMLElement {
           // Real light does the work; just warm the floor slightly
           d.mat.color.copy(base.clone().lerp(new THREE.Color(activeColor(st, d.room.color)), 0.25));
           d.mat.emissive.setRGB(0, 0, 0);
+        } else if (active && d.finishColor) {
+          // A floor finish (grass, planks, tiles) stays itself: its area's lights only add a glow
+          const c = new THREE.Color(activeColor(st, d.room.color));
+          d.mat.color.copy(base.clone().lerp(c, 0.2));
+          d.mat.emissive.copy(c);
+          d.mat.emissiveIntensity = 0.12 * brightness(st);
         } else if (active) {
           const c = new THREE.Color(activeColor(st, d.room.color));
           d.mat.color.copy(c);

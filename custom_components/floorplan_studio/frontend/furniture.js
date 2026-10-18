@@ -44,6 +44,8 @@
 //
 // `robot: true` (robot vacuum): linked to a vacuum entity, it drives lanes through the
 // room being cleaned and goes back to its place on the plan (the dock) afterwards.
+// `dock: "vacuum" | "mower"`: a robot vacuum's dock or a mower's charging station. A robot
+// linked to one (its `dock`: the station's id) parks on it and moves along with it.
 // `robot: "mower"` (robot lawn mower): linked to a lawn mower entity, it mows the outdoor
 // area its place on the plan (the charging station) is in, in random straight lines that
 // turn at the edge, as Gardena's mowers do, and drives back home afterwards.
@@ -1307,13 +1309,13 @@ export const CATALOG = {
     laundry: "dryer", drum: { x: 0.5, z: 0.55 }, parts: laundryFront(true) },
   robot_vacuum: { label: "Robot vacuum", icon: "mdi:robot-vacuum", cat: "Appliances", robot: true, w: 0.35, d: 0.35, h: 0.1, color: COLORS.dark, parts: [
     cyl(0, 0, 1, 1, 0, 1, "main"), cyl(0.38, 0.12, 0.62, 0.36, 1, 1.08, "metal")] },
-  vacuum_dock: { label: "Vacuum dock", icon: "mdi:home-import-outline", cat: "Appliances", w: 0.32, d: 0.16, h: 0.12, color: COLORS.dark, parts: [
+  vacuum_dock: { label: "Vacuum dock", icon: "mdi:home-import-outline", cat: "Appliances", dock: "vacuum", w: 0.32, d: 0.16, h: 0.12, color: COLORS.dark, parts: [
     box(0, 0, 1, 1, 0, 1, "main"), box(0.1, 0.9, 0.9, 1.4, 0, 0.08, "dark")] },
   robot_mower: { label: "Robot lawn mower", icon: "mdi:robot-mower", cat: "Garden", robot: "mower", w: 0.42, d: 0.6, h: 0.25, color: "#5b6a5d", parts: robotMower() },
   gardena_sileno_city: { label: "SILENO city", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.39, d: 0.56, h: 0.24, color: "#5d666b", parts: robotMower({ accent: "gardena" }) },
   gardena_sileno_life: { label: "SILENO life", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.41, d: 0.63, h: 0.25, color: "#5d666b", parts: robotMower({ accent: "gardena" }) },
   gardena_sileno_minimo: { label: "SILENO minimo", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.37, d: 0.52, h: 0.22, color: "#6b7479", parts: robotMower({ accent: "gardena" }) },
-  gardena_station: { label: "Charging station", icon: "mdi:home-lightning-bolt-outline", cat: "Gardena", w: 0.42, d: 0.55, h: 0.17, color: "#5d666b", parts: [
+  gardena_station: { label: "Charging station", icon: "mdi:home-lightning-bolt-outline", cat: "Gardena", dock: "mower", w: 0.42, d: 0.55, h: 0.17, color: "#5d666b", parts: [
     // A low ramp the mower drives onto, the charging hood with its contacts at the back
     plan(0, 0, 1, 1, 0, 0.12, "dark", [[0.06, 0, 0.04], [0.94, 0, 0.04], [1, 0.7, 0.06], [0.85, 1, 0.05], [0.15, 1, 0.05], [0, 0.7, 0.06]], { bevel: 0.006 }),
     plan(0.12, 0, 0.88, 0.32, 0.1, 1, "main", [[0, 0, 0.04], [1, 0, 0.04], [1, 0.75, 0.05], [0, 0.75, 0.05]], { bevel: 0.02 }),
@@ -1436,6 +1438,63 @@ export function displayFeed(tv, pieces) {
  * receiver feeding it, or by mistake the player it's fed by). Move a receiver link onto
  * the receiver's output and drop the rest. Returns whether anything changed.
  */
+/** The kind of robot a piece is ("vacuum" or "mower"), or null. */
+export const robotKind = (f) => {
+  const r = catalogItem(f.type).robot;
+  return r === "mower" ? "mower" : r ? "vacuum" : null;
+};
+
+/**
+ * Where a robot parks on its station: { x, y, rotation, z }. A mower drives onto the ramp,
+ * nose under the charging hood at the back; a vacuum backs onto its dock's front.
+ */
+export function dockPose(robot, dock) {
+  const kind = robotKind(robot);
+  const ly = kind === "mower" ? -dock.d / 2 + dock.d * 0.24 - 0.04 + robot.d / 2 : dock.d / 2 + robot.d / 2 - 0.03;
+  const [x, y] = toWorld(dock, [0, ly]);
+  const round = (v) => Math.round(v * 1000) / 1000;
+  return {
+    x: round(x), y: round(y),
+    rotation: kind === "mower" ? ((dock.rotation || 0) + 180) % 360 : dock.rotation || 0,
+    z: round((dock.z || 0) + (kind === "mower" ? dock.h * 0.12 : 0)),
+  };
+}
+
+/**
+ * Robots linked to a station stand on it (after the station was moved or turned); a link to
+ * a station that's gone is dropped. A robot that has never been linked or unlinked (no `dock`
+ * at all) and stands on a station of its kind is linked to it. True if anything changed.
+ */
+export function tidyDocks(doc) {
+  let changed = false;
+  for (const floor of doc?.floors || []) {
+    const pieces = floor.furniture || [];
+    for (const robot of pieces) {
+      const kind = robotKind(robot);
+      if (kind && robot.dock === undefined) {
+        const under = pieces.find((p) => catalogItem(p.type).dock === kind && containsPoint(p, [robot.x, robot.y], 0.15));
+        if (under) {
+          robot.dock = under.id;
+          changed = true;
+        }
+      }
+      if (!robot.dock) continue;
+      const dock = pieces.find((p) => p.id === robot.dock && catalogItem(p.type).dock === robotKind(robot));
+      if (!dock) {
+        robot.dock = null;
+        changed = true;
+        continue;
+      }
+      const pose = dockPose(robot, dock);
+      if (Object.keys(pose).some((k) => Math.abs((robot[k] || 0) - pose[k]) > 1e-3)) {
+        Object.assign(robot, pose);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 export function tidyAvWiring(doc) {
   let changed = false;
   for (const floor of doc?.floors || []) {

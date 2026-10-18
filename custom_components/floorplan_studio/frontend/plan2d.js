@@ -1345,12 +1345,13 @@ export class FpsPlan2D extends HTMLElement {
       const finish = floorFinish(r);
       const finished = finish.material !== "plain";
       const fill = on ? activeColor(st, r.color) : finished ? finish.color : r.color;
-      // Rooms lit by a placed light get only a tint; the light's own glow does the rest
-      const op = on ? (litRooms.has(r.id) ? 0.22 : 0.35 + 0.4 * brightness(st)) : finished ? 0.55 : 0.18;
+      // Rooms lit by a placed light get only a tint; the light's own glow does the rest. A floor
+      // finish (grass, planks) stays itself under a tint too, also lit by its area's lights.
+      const op = on ? (litRooms.has(r.id) ? 0.22 : finished ? 0.2 + 0.15 * brightness(st) : 0.35 + 0.4 * brightness(st)) : finished ? 0.55 : 0.18;
       const pts = r.points.map((q) => q.join(",")).join(" ");
       const isSel = sel?.kind === "room" && sel.id === r.id;
-      if (finished && on && litRooms.has(r.id)) {
-        // Lit by its own lamp: keep the floor visible underneath the tint
+      if (finished && on) {
+        // Keep the floor visible underneath the tint
         parts.push(`<polygon points="${pts}" fill="${escapeHtml(finish.color)}" fill-opacity="0.45" stroke="none"/>`);
       }
       parts.push(`<polygon class="room${isSel ? " sel" : ""}" points="${pts}" fill="${escapeHtml(fill)}"

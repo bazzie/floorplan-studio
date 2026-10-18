@@ -163,6 +163,8 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("connected_input"): vol.Any(None, vol.All(str, vol.Length(max=100))),
         # Sonos speakers bonded to a soundbar as rear surrounds (entity_id: the soundbar's player)
         vol.Optional("surround"): vol.Any(None, bool),
+        # Robot vacuums and mowers: the id of the dock / charging station piece they park on
+        vol.Optional("dock"): vol.Any(None, _id),
         # Robot vacuums: the vacuum's room ids mapped to rooms of the plan
         vol.Optional("vacuum_rooms"): vol.Any(
             None, vol.All({vol.Match(r"^\d{1,6}$"): _id}, vol.Length(max=100))

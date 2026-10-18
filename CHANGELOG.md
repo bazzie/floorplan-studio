@@ -2,6 +2,12 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.1 (2026-10-18)
+
+- Robot mowers: returning or paused, shown out on the lawn
+- Robots linked to their station
+- Floor finishes stay visible when their area's lights are on
+
 ## 0.5.0 (2026-10-18)
 
 - Robot lawn mowers: Gardena SILENO and a charging station, mowing like the real thing
