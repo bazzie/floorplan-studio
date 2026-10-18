@@ -21,6 +21,7 @@ export default {
   "Room {n}": "Kamer {n}",
   "This floor is empty. Click Edit to start drawing.": "Deze verdieping is leeg. Klik op Bewerken om te beginnen met tekenen.",
   "No entity selected": "Geen entiteit gekozen",
+  "Off": "Uit",
   "Floor": "Verdieping",
 
   // 3D toolbar

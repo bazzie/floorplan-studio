@@ -373,6 +373,16 @@ export function hassChanged(prev, next, ids) {
 export const isUnavailable = (stateObj) =>
   !stateObj || stateObj.state === "unavailable" || stateObj.state === "unknown";
 
+/**
+ * Washing machines and dryers drop off the network when switched off (Home Connect: their
+ * entities turn unavailable): such a piece shows as off, not as unavailable.
+ */
+export const offWhenUnavailable = (def, stateObj) => !!def?.laundry && !!stateObj && isUnavailable(stateObj);
+
+/** A piece's state for its label: "Off" for a switched-off washer (see offWhenUnavailable). */
+export const pieceStateText = (hass, def, stateObj) =>
+  offWhenUnavailable(def, stateObj) ? t("Off") : formatState(hass, stateObj);
+
 const COLOR_MODES = ["hs", "xy", "rgb", "rgbw", "rgbww"];
 
 /**

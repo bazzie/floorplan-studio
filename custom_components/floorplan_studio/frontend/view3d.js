@@ -27,6 +27,7 @@ import {
   isScreenOn,
   hassChanged,
   laundryState,
+  pieceStateText,
   isUnavailable,
   pointInPolygon,
   polygonArea,
@@ -565,13 +566,14 @@ export class FpsView3D extends HTMLElement {
 
   requestRender() {
     if (this._raf || !this._renderer) return;
+    const requested = performance.now();
     this._raf = requestAnimationFrame(() => {
       this._raf = null;
       if (this._shadowsDirty && !this._q.baked) this._renderShadows();
       this._renderer.render(this._scene, this._camera);
       this._renderCompass();
       this._positionOverlay();
-      this._watchFrameRate();
+      this._watchFrameRate(requested);
       if (this._measure && this._bounds) this._measureDevice();
     });
   }
@@ -712,20 +714,18 @@ export class FpsView3D extends HTMLElement {
   }
 
   /**
-   * Dynamic resolution: while the view keeps moving (turning, zooming, animating), frames
-   * should come quickly. When they average under ~20 per second, draw fewer pixels (down
-   * to half the screen's resolution); the picture gets a little softer, moving it smooth.
+   * Dynamic resolution: a frame should be on screen soon after it's asked for. When that
+   * takes over 50 ms on average (under ~20 frames a second while moving), draw fewer pixels
+   * (down to half the screen's resolution); the picture gets a little softer, moving it
+   * smooth. Measured from asking to drawing, not between frames: with a busy Home
+   * Assistant, states change every few hundred milliseconds and each change draws one
+   * frame, which says nothing about how fast the device draws.
    */
-  _watchFrameRate() {
-    const now = performance.now();
-    const gap = now - (this._lastFrame || 0);
-    this._lastFrame = now;
-    if (gap > 250) {
-      this._frameGaps = []; // a pause, not a slow frame
-      return;
-    }
+  _watchFrameRate(requested) {
+    const wait = performance.now() - requested;
+    if (wait > 250) return; // the page was hidden or busy elsewhere, not a slow frame
     const gaps = (this._frameGaps ||= []);
-    gaps.push(gap);
+    gaps.push(wait);
     if (gaps.length < 30) return;
     const average = gaps.reduce((a, b) => a + b, 0) / gaps.length;
     this._frameGaps = [];
@@ -2325,7 +2325,7 @@ export class FpsView3D extends HTMLElement {
     for (const item of this._overlayItems) {
       if (!item.el) continue;
       if (item.kind === "badge") {
-        item.el.textContent = formatState(hass, hass.states[item.furniture.entity_id]);
+        item.el.textContent = pieceStateText(hass, catalogItem(item.furniture.type), hass.states[item.furniture.entity_id]);
       } else if (item.kind === "label") {
         const r = item.room;
         const labelEntity = roomLabelEntity(hass, r);

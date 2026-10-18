@@ -29,6 +29,8 @@ import {
   isScreenOn,
   hassChanged,
   laundryState,
+  offWhenUnavailable,
+  pieceStateText,
   isUnavailable,
   normalizeAngle,
   pointInPolygon,
@@ -1394,7 +1396,7 @@ export class FpsPlan2D extends HTMLElement {
       const cls = ["furniture"];
       if (sel?.kind === "furniture" && sel.id === f.id) cls.push("sel");
       if (on && !def.screen && !def.light) cls.push("active");
-      if (f.entity_id && isUnavailable(st)) cls.push("unavailable");
+      if (f.entity_id && isUnavailable(st) && !offWhenUnavailable(def, st)) cls.push("unavailable");
       if (def.ceiling) cls.push("overhead"); // hangs from the ceiling: see-through, dashed
       // Playing media: sound waves pulsing out of the piece, drawn in the overlay (see _renderWaves)
       // (not while editing: moving rings get in the way of placing and selecting)
@@ -1872,7 +1874,7 @@ export class FpsPlan2D extends HTMLElement {
       const [sx, sy] = this._toScreen([f.x, f.y]);
       el.style.left = `${sx}px`;
       el.style.top = `${sy}px`;
-      el.textContent = formatState(hass, states[f.entity_id]);
+      el.textContent = pieceStateText(hass, catalogItem(f.type), states[f.entity_id]);
     }
     for (const [id, el] of this._badgeEls) {
       if (!seen.has(`badge:${id}`)) {

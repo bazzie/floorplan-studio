@@ -2,6 +2,11 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.12 (2026-10-18)
+
+- Washers and dryers show as off when unavailable
+- 3D: judge speed by how long a frame takes, not the time between frames
+
 ## 0.5.10 (2026-10-18)
 
 - 3D roofs: roofs with inward corners are drawn right
