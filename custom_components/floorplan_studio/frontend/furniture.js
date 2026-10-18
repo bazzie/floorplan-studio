@@ -184,11 +184,55 @@ const circleSlice = (side, from, n = 18) => {
     return [0.5 + 0.5 * side * Math.cos(t), 0.5 + 0.5 * Math.sin(t)];
   });
 };
+// A circle, and the part of one in front of `from` (a share of the depth: a robot's bumper)
+const disc = (n = 40) => Array.from({ length: n }, (_, i) => [0.5 + 0.5 * Math.cos((2 * Math.PI * i) / n), 0.5 + 0.5 * Math.sin((2 * Math.PI * i) / n)]);
+const frontBand = (from, n = 20) => {
+  const a = Math.asin(2 * from - 1);
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = a + ((Math.PI - 2 * a) * i) / n;
+    return [0.5 + 0.5 * Math.cos(t), 0.5 + 0.5 * Math.sin(t)];
+  });
+};
 const hourglass = (pinch, n = 24) => {
   const half = (u) => 0.5 * (1 - pinch * Math.sin(Math.PI * u) ** 2) * (1 - Math.abs(2 * u - 1) ** 5) ** 0.2;
   const us = Array.from({ length: n + 1 }, (_, i) => 0.5 - 0.5 * Math.cos((Math.PI * i) / n)); // denser at the ends
   return [...us.map((u) => [u, 0.5 + half(u)]), ...us.slice(1, -1).reverse().map((u) => [u, 0.5 - half(u)])];
 };
+
+/**
+ * Dreame mopping robot: a round body with a lighter lid, a dark bumper band round the front,
+ * the LiDAR turret behind the middle (`lidar`: its height above the lid, a share of the height;
+ * the X50's retracts nearly flush), two buttons in front of it.
+ */
+function dreameRobot({ lidar = 0.22 } = {}) {
+  const lid = 1 - lidar;
+  return [
+    plan(0.03, 0.03, 0.97, 0.97, 0, 0.1, "dark", disc()),
+    plan(0, 0, 1, 1, 0.06, lid - 0.02, "main", disc(), { bevel: 0.008 }),
+    plan(-0.006, -0.006, 1.006, 1.006, 0.18, 0.6, "dark", frontBand(0.62)),
+    plan(0.04, 0.04, 0.96, 0.96, lid - 0.04, lid, "main3", disc(), { bevel: 0.003 }),
+    cyl(0.37, 0.22, 0.63, 0.48, lid - 0.02, 1, "main"), cyl(0.385, 0.235, 0.615, 0.465, 1, 1.02, "dark"),
+    cyl(0.43, 0.62, 0.47, 0.66, lid, lid + 0.03, "dark"), cyl(0.53, 0.62, 0.57, 0.66, lid, lid + 0.03, "dark"),
+  ];
+}
+
+/**
+ * Dreame Ultra base station: a tower that washes and dries the mops and empties the dust bin.
+ * The robot backs in under it onto the wash tray (open at the bottom), its front half out on
+ * the ramp; the water tanks behind a dark window at the top front, a lid on top.
+ */
+function dreameStation() {
+  // (the tower stands on the back 62%; in front of it only the ramp, where the robot's front sticks out)
+  const T = 0.62;
+  return [
+    plan(0, 0, 1, T, 0.22, 1, "main", roundRect(0, 0, 1, 1, 0.03), { bevel: 0.01 }),
+    plan(0, 0, 1, 0.08, 0, 0.24, "main", roundRect(0, 0, 1, 1, 0.012)),
+    box(0, 0.08, 0.04, T, 0, 0.24, "main"), box(0.96, 0.08, 1, T, 0, 0.24, "main"),
+    plan(0.04, 0.08, 0.96, 1, 0, 0.02, "main3", [[0, 0], [1, 0], [1, 1, 0.03], [0, 1, 0.03]]),
+    plan(0.01, 0.01, 0.99, T - 0.01, 0.985, 1.012, "main3", roundRect(0, 0, 1, 1, 0.03), { bevel: 0.003 }),
+    box(0.1, T - 0.003, 0.9, T + 0.004, 0.6, 0.93, "dark"), box(0.47, T - 0.003, 0.53, T + 0.006, 0.5, 0.53, "light"),
+  ];
+}
 
 /**
  * Robot lawn mower: a rounded shell, narrower at the nose (+y), over a dark chassis, big drive
@@ -1311,6 +1355,13 @@ export const CATALOG = {
     cyl(0, 0, 1, 1, 0, 1, "main"), cyl(0.38, 0.12, 0.62, 0.36, 1, 1.08, "metal")] },
   vacuum_dock: { label: "Vacuum dock", icon: "mdi:home-import-outline", cat: "Appliances", dock: "vacuum", w: 0.32, d: 0.16, h: 0.12, color: COLORS.dark, parts: [
     box(0, 0, 1, 1, 0, 1, "main"), box(0.1, 0.9, 0.9, 1.4, 0, 0.08, "dark")] },
+  dreame_x50_ultra: { label: "X50 Ultra", icon: "mdi:robot-vacuum", cat: "Dreame", robot: true, w: 0.35, d: 0.35, h: 0.089, color: "#2a2b2d", parts: dreameRobot({ lidar: 0.1 }) },
+  dreame_x40_ultra: { label: "X40 Ultra", icon: "mdi:robot-vacuum", cat: "Dreame", robot: true, w: 0.35, d: 0.35, h: 0.103, color: "#f1f1ee", parts: dreameRobot() },
+  dreame_l40_ultra: { label: "L40 Ultra", icon: "mdi:robot-vacuum", cat: "Dreame", robot: true, w: 0.35, d: 0.35, h: 0.103, color: "#f1f1ee", parts: dreameRobot() },
+  dreame_l20_ultra: { label: "L20 Ultra", icon: "mdi:robot-vacuum", cat: "Dreame", robot: true, w: 0.35, d: 0.35, h: 0.103, color: "#f1f1ee", parts: dreameRobot() },
+  dreame_l10s_ultra: { label: "L10s Ultra", icon: "mdi:robot-vacuum", cat: "Dreame", robot: true, w: 0.35, d: 0.35, h: 0.097, color: "#f1f1ee", parts: dreameRobot() },
+  // (the robot parks inside: its middle at `park` of the depth, on the tray `parkZ` of the height up)
+  dreame_station: { label: "Base station (Ultra)", icon: "mdi:home-import-outline", cat: "Dreame", dock: "vacuum", park: 0.59, parkZ: 0.02, w: 0.34, d: 0.456, h: 0.59, color: "#f1f1ee", parts: dreameStation() },
   robot_mower: { label: "Robot lawn mower", icon: "mdi:robot-mower", cat: "Garden", robot: "mower", w: 0.42, d: 0.6, h: 0.25, color: "#5b6a5d", parts: robotMower() },
   gardena_sileno_city: { label: "SILENO city", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.39, d: 0.56, h: 0.24, color: "#5d666b", parts: robotMower({ accent: "gardena" }) },
   gardena_sileno_life: { label: "SILENO life", icon: "mdi:robot-mower", cat: "Gardena", robot: "mower", w: 0.41, d: 0.63, h: 0.25, color: "#5d666b", parts: robotMower({ accent: "gardena" }) },
@@ -1392,7 +1443,7 @@ export const CATALOG = {
     box(0, 0, 1, 1, 0, 1, "main")] },
 };
 
-export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Samsung", "DALI", "Apple", "NAD", "Sony", "Ligne Roset", "Eufy", "Gardena", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
+export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Samsung", "DALI", "Apple", "NAD", "Sony", "Ligne Roset", "Eufy", "Gardena", "Dreame", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
 
 /** Categories shown inside another one in the catalog (a brand's range under its kind of thing). */
 export const SUBCATEGORIES = {
@@ -1401,6 +1452,7 @@ export const SUBCATEGORIES = {
   "Ligne Roset": "Living",
   Eufy: "Security",
   Gardena: "Garden",
+  Dreame: "Appliances",
 };
 
 export const catalogItem = (type) => CATALOG[type] || CATALOG.box;
@@ -1450,9 +1502,15 @@ export const robotKind = (f) => {
  */
 export function dockPose(robot, dock) {
   const kind = robotKind(robot);
+  const def = catalogItem(dock.type);
+  const round = (v) => Math.round(v * 1000) / 1000;
+  if (def.park !== undefined) {
+    // A station the robot backs into (a Dreame base station): inside, facing out
+    const [x, y] = toWorld(dock, [0, (def.park - 0.5) * dock.d]);
+    return { x: round(x), y: round(y), rotation: dock.rotation || 0, z: round((dock.z || 0) + (def.parkZ || 0) * dock.h) };
+  }
   const ly = kind === "mower" ? -dock.d / 2 + dock.d * 0.24 - 0.04 + robot.d / 2 : dock.d / 2 + robot.d / 2 - 0.03;
   const [x, y] = toWorld(dock, [0, ly]);
-  const round = (v) => Math.round(v * 1000) / 1000;
   return {
     x: round(x), y: round(y),
     rotation: kind === "mower" ? ((dock.rotation || 0) + 180) % 360 : dock.rotation || 0,

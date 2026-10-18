@@ -2141,7 +2141,7 @@ class FloorplanStudioPanel extends HTMLElement {
         : t("Link it to its station: it's put on it, and moves along when the station is moved.")}</span>`
       : `<span class="muted">${kind === "mower"
         ? t("Place a charging station (Garden › Gardena) on this floor to link the mower to it.")
-        : t("Place a vacuum dock (Appliances) on this floor to link the vacuum to it.")}</span>`}</div>`;
+        : t("Place a dock or base station (Appliances, Appliances › Dreame) on this floor to link the vacuum to it.")}</span>`}</div>`;
   }
 
   /** A robot mower: which area it mows (the outdoor area its charging station is in). */

@@ -2,6 +2,10 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.2 (2026-10-18)
+
+- Dreame mopping robots and their Ultra base station
+
 ## 0.5.1 (2026-10-18)
 
 - Robot mowers: returning or paused, shown out on the lawn
