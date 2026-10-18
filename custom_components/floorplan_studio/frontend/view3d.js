@@ -1238,10 +1238,15 @@ export class FpsView3D extends HTMLElement {
         uv.push((x * face.along[0] + y * face.along[1]) / tw, (x * face.slope[0] + y * face.slope[1]) / cos / th);
         posU.push(x, wallTop + z - THICK, y);
       }
-      // Faces come ccw in plan (y down) = clockwise seen from above: flip so they face up
-      for (let k = 1; k < face.pts.length - 1; k++) {
-        idx.push(base, base + k + 1, base + k);
-        idxU.push(base, base + k, base + k + 1);
+      // Faces come ccw in plan (y down) = clockwise seen from above: flip so they face up.
+      // Cut into triangles by ear clipping, not a fan: a flat roof may have inward corners
+      // (an outline that steps around a bay), where a fan would cover what's outside it
+      const plan = face.pts.map(([x, y]) => new THREE.Vector2(x, y));
+      for (let [a, b, c] of THREE.ShapeUtils.triangulateShape(plan, [])) {
+        const [pa, pb, pc] = [plan[a], plan[b], plan[c]];
+        if ((pb.x - pa.x) * (pc.y - pa.y) - (pb.y - pa.y) * (pc.x - pa.x) > 0) [b, c] = [c, b];
+        idx.push(base + a, base + b, base + c);
+        idxU.push(base + a, base + c, base + b);
       }
     }
     const mesh = (positions, indices, mat, uvs) => {

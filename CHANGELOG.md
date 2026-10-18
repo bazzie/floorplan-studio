@@ -2,6 +2,10 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.10 (2026-10-18)
+
+- 3D roofs: roofs with inward corners are drawn right
+
 ## 0.5.9 (2026-10-18)
 
 - Furniture list: show the Petite Friture and LABEL51 brands
