@@ -593,20 +593,13 @@ export const listAreas = (hass) =>
   Object.values(hass?.areas || {}).sort((a, b) => a.name.localeCompare(b.name));
 
 /**
- * State that drives a room's highlight: its own entity if set, otherwise
- * the first light that is on in its linked area.
+ * State that drives a room's highlight: its own entity if set. Lights don't recolour the
+ * floor (a placed lamp lights it with its glow instead), so a light entity, or the lights
+ * of the linked area, never highlight a room.
  */
 export function roomHighlight(hass, room) {
-  const states = hass?.states || {};
-  if (room.entity_id) {
-    const st = states[room.entity_id];
-    return { active: isActive(st), stateObj: st };
-  }
-  if (room.area_id) {
-    const on = areaEntities(hass, room.area_id, "light").map((id) => states[id]).find(isActive);
-    return { active: !!on, stateObj: on };
-  }
-  return { active: false, stateObj: undefined };
+  const st = room.entity_id && domainOf(room.entity_id) !== "light" ? hass?.states?.[room.entity_id] : undefined;
+  return { active: !!st && isActive(st), stateObj: st };
 }
 
 /** Entity shown under the room name: explicit sensor, else the area's temperature sensor. */

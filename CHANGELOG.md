@@ -2,6 +2,11 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.4 (2026-10-18)
+
+- Lights no longer recolour the floor
+- Cube wall spot that shines down
+
 ## 0.5.2 (2026-10-18)
 
 - Dreame mopping robots and their Ultra base station

@@ -1202,9 +1202,8 @@ class FloorplanStudioPanel extends HTMLElement {
         <div class="field"><label>${t("Name")}</label><input data-field="name" value="${escapeHtml(item.name)}"></div>
         <div class="field"><label>${t("Colour")}</label><input type="color" data-field="color" value="${escapeHtml(item.color)}"></div>
         ${this._areaField(item)}
-        ${entity("entity_id", t("Highlight entity"), item.entity_id, item.area_id
-          ? t("Optional. Without one, the room lights up when any light in the area is on.")
-          : t("Room lights up when this is on (e.g. a light or motion sensor). Tap the room to open it."))}
+        ${entity("entity_id", t("Highlight entity"), item.entity_id,
+          t("Optional. The room lights up when this is on (e.g. a motion sensor or switch); lights leave the floor its own colour. Tap the room to open it."))}
         ${entity("sensor_entity_id", t("Label sensor"), item.sensor_entity_id, item.area_id
           ? t("Optional. Defaults to the area's temperature sensor.")
           : t("Value shown under the room name (e.g. temperature)."), "sensor.living_room_temperature")}

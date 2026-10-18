@@ -101,6 +101,7 @@ export default {
   "Floor uplighter": "Uplighter",
   "Table lamp": "Tafellamp",
   "Wall light": "Wandlamp",
+  "Wall spot (cube)": "Wandspot (kubus)",
   "LED strip": "Ledstrip",
   "Motion sensor": "Bewegingssensor",
   "Outdoor motion sensor": "Bewegingssensor buiten",

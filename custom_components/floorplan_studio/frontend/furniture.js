@@ -1184,6 +1184,12 @@ export const CATALOG = {
   wall_light: { label: "Wall light", icon: "mdi:wall-sconce-round", cat: "Lighting", w: 0.22, d: 0.18, h: 0.3, z: 1.7, color: COLORS.dark,
     light: { y: 0.65, z: 0.6, angle: 1.4 }, parts: [
       box(0.25, 0, 0.75, 0.1, 0.1, 0.9, "main"), box(0.45, 0.1, 0.55, 0.45, 0.45, 0.55, "main"), cyl(0.1, 0.3, 0.9, 1, 0.5, 1, "shade")] },
+  // A cube on the wall that shines straight down out of a round lens in its underside
+  wall_spot: { label: "Wall spot (cube)", icon: "mdi:wall-sconce-flat", cat: "Lighting", w: 0.1, d: 0.1, h: 0.1, z: 1.8, color: COLORS.dark,
+    light: { y: 0.5, z: 0, angle: 0.5, beam: true, lens: 0.31, power: 0.4 }, parts: [
+      box(0, 0, 1, 1, 0.03, 1, "main"),
+      cyl(0.12, 0.12, 0.88, 0.88, 0, 0.03, "metal"), // bezel
+      cyl(0.19, 0.19, 0.81, 0.81, 0.002, 0.031, "shade", "solid")] },
   led_strip: { label: "LED strip", icon: "mdi:led-strip-variant", cat: "Lighting", w: 2.0, d: 0.03, h: 0.02, color: COLORS.white,
     light: { z: 0.5, angle: 1.5 }, parts: [box(0, 0, 1, 1, 0, 1, "shade", "solid")] },
 
