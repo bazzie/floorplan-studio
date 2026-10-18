@@ -277,6 +277,30 @@ function pendantShade(profile, shade = 0.35) {
   ];
 }
 /**
+ * Petite Friture Vertigo (Constance Guisset, 2010): a small basket of upright strips holds
+ * the bulb; from its rim a wide, open brim of thin spokes with a hoop around the edge
+ * sways like a hat, up on one side (+x) and down on the other. Sizes in metres, from the
+ * piece's width and depth; the brim's lowest point is the bottom of the piece.
+ */
+function vertigoLayout(w, d) {
+  const R = (w + d) / 4;
+  const [top, foot] = [0.2, 0.15]; // basket radius at its rim and foot (share of R)
+  const basket = 0.24 * R; // basket height
+  const slope = (a) => 0.3 * Math.cos(a) + 0.08 * Math.cos(2 * a); // brim rise per unit of radius
+  let [lo, hi] = [Infinity, -Infinity];
+  for (let i = 0; i < 72; i++) {
+    const s = slope((i / 72) * Math.PI * 2);
+    lo = Math.min(lo, s);
+    hi = Math.max(hi, s);
+  }
+  const lift = Math.max(0, -(basket + R * lo)); // the basket's foot above the bottom of the piece
+  // Brim height at angle a and radius r (share of R), from the bottom of the piece
+  const brim = (a, r) => lift + basket + ((r - top) / (1 - top)) * R * slope(a);
+  return { R, top, foot, basket, lift, brim, height: lift + basket + R * hi, bulb: lift + basket * 0.45 };
+}
+const vertigoBulb = (w, d, h) => +(vertigoLayout(w, d).bulb / h).toFixed(3);
+
+/**
  * A closed globe shade with a round opening at the bottom (`opening`: its radius as a
  * fraction of the globe's), on a cord; `shade` is the globe's height (fraction of the
  * piece). The outside is the piece's colour; only the inside lights up.
@@ -427,6 +451,17 @@ function togo(w, { arms = false, corner = false, ottoman = false } = {}) {
 // beyond the piece. opts: { inner, outer } as fractions of the radius, and
 // { start, end } angles in degrees (0 = right, 90 = front, 180 = left, 270 = back).
 const arc = (x0, y0, x1, y1, z0, z1, c, opts) => ["arc", x0, y0, x1, y1, z0, z1, c, opts];
+/**
+ * A round rod from `from` to `to` ([x, y, z] shares of the piece), `r0` and `r1` its radius
+ * at either end in metres: a splayed, tapered leg or a stretcher.
+ */
+const rod = (c, from, to, r0, r1 = r0) =>
+  ["rod", 0, 0, 1, 1, Math.min(from[2], to[2]), Math.max(from[2], to[2]), c, { from, to, r0, r1 }];
+/**
+ * A curved shell (a tub chair's back): an `arc` whose top drops from z1 at the middle of the
+ * sweep to `low` (share of its height) at both ends, with a rounded top edge.
+ */
+const shell = (x0, y0, x1, y1, z0, z1, c, opts) => ["shell", x0, y0, x1, y1, z0, z1, c, opts];
 
 /** Four slim round legs, inset from the corners (fractions of the piece). */
 const roundLegs = (i, s, z1, c) => [
@@ -860,6 +895,8 @@ export const CATALOG = {
     cyl(0.28, 0.28, 0.72, 0.72, 0, 0.06, "darkwood"), cyl(0.45, 0.45, 0.55, 0.55, 0.06, 0.95, "darkwood"),
     cyl(0, 0, 1, 1, 0.95, 1, "main")] },
   ...luxuryChairs(),
+  // ----- LABEL51 (sizes from the product sheet, rounded) -----
+  label51_wave: { label: "Wave dining chair", icon: "mdi:chair-school", cat: "LABEL51", w: 0.57, d: 0.6, h: 0.82, color: "#5b5a3b", parts: waveChair() },
   dining_chair: { label: "Dining chair", icon: "mdi:chair-school", cat: "Dining", w: 0.45, d: 0.5, h: 0.9, color: COLORS.wood, parts: [
     // seat faces the front (+y); the backrest is at the back edge
     ...legs(0.05, 0.09, 0.5, "main"),
@@ -1145,6 +1182,13 @@ export const CATALOG = {
     ...[[0.5, 0.5, 0.0], [0.22, 0.3, 0.14], [0.78, 0.32, 0.22], [0.3, 0.76, 0.3], [0.74, 0.74, 0.08]].flatMap(([cx, cy, z]) => [
       cyl(cx - 0.006, cy - 0.006, cx + 0.006, cy + 0.006, z + 0.2, 0.975, "dark"),
       ball(cx - 0.15, cy - 0.15, cx + 0.15, cy + 0.15, z, z + 0.22, "shade")])] },
+  // ----- Petite Friture (sizes from the product sheet, rounded; resize as needed) -----
+  vertigo_large: { label: "Vertigo, large (Ø 200 cm)", icon: "mdi:ceiling-light", cat: "Petite Friture", ceiling: true, w: 2.0, d: 2.0, h: 1.2,
+    color: COLORS.dark, light: { z: vertigoBulb(2.0, 2.0, 1.2), angle: 1.35, beam: true }, parts: [["vertigo", 0, 0, 1, 1, 0, 1, "main"]] },
+  vertigo_medium: { label: "Vertigo, medium (Ø 140 cm)", icon: "mdi:ceiling-light", cat: "Petite Friture", ceiling: true, w: 1.4, d: 1.4, h: 1.1,
+    color: COLORS.dark, light: { z: vertigoBulb(1.4, 1.4, 1.1), angle: 1.35, beam: true }, parts: [["vertigo", 0, 0, 1, 1, 0, 1, "main"]] },
+  vertigo_small: { label: "Vertigo, small (Ø 110 cm)", icon: "mdi:ceiling-light", cat: "Petite Friture", ceiling: true, w: 1.1, d: 1.1, h: 1.0,
+    color: COLORS.dark, light: { z: vertigoBulb(1.1, 1.1, 1.0), angle: 1.35, beam: true }, parts: [["vertigo", 0, 0, 1, 1, 0, 1, "main"]] },
   spot: { label: "Recessed spot", icon: "mdi:light-recessed", cat: "Lighting", ceiling: true, w: 0.09, d: 0.09, h: 0.02, color: COLORS.white,
     light: { z: 0, angle: 0.55, beam: true, lens: 0.35 }, parts: [cyl(0, 0, 1, 1, 0.5, 1, "main"), cyl(0.15, 0.15, 0.85, 0.85, 0, 0.5, "shade", "solid")] },
   // Directional: the body tilts on its ceiling plate (the piece's `tilt`), turned by its rotation
@@ -1454,8 +1498,8 @@ export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", 
 /** Categories shown inside another one in the catalog (a brand's range under its kind of thing). */
 export const SUBCATEGORIES = {
   Sonos: "Multimedia", Samsung: "Multimedia", DALI: "Multimedia", Apple: "Multimedia", NAD: "Multimedia", Sony: "Multimedia",
-  "Philips Hue": "Lighting",
-  "Ligne Roset": "Living",
+  "Philips Hue": "Lighting", "Petite Friture": "Lighting",
+  "Ligne Roset": "Living", LABEL51: "Dining",
   Eufy: "Security",
   Gardena: "Garden",
   Dreame: "Appliances",
@@ -1820,6 +1864,21 @@ export function furnitureSvg(f, { activeScreen = false, glowColor = null, tvPlay
         return `<rect x="${-f.w / 2}" y="${-f.d / 2}" width="${f.w}" height="${f.d}" fill="${roofFill}" fill-opacity=".45"/>
           <line x1="${-f.w / 2}" y1="${(opts?.ridgeShift || 0) * L.hd}" x2="${f.w / 2}" y2="${(opts?.ridgeShift || 0) * L.hd}" stroke="rgba(0,0,0,.45)" stroke-width="0.03"/>${clad}${posts}`;
       }
+      if (shape === "vertigo") {
+        // From above: the hoop, the spokes out to it, and the basket with the bulb in it
+        const L = vertigoLayout(f.w, f.d);
+        const [rx, ry] = [f.w / 2, f.d / 2];
+        const spokes = [];
+        for (let i = 0; i < VERTIGO_SPOKES; i++) {
+          const a = (i / VERTIGO_SPOKES) * Math.PI * 2;
+          const [c, sn] = [Math.cos(a), Math.sin(a)];
+          spokes.push(`M${(c * rx * L.top).toFixed(3)},${(sn * ry * L.top).toFixed(3)}L${(c * rx).toFixed(3)},${(sn * ry).toFixed(3)}`);
+        }
+        return `<path d="${spokes.join("")}" fill="none" stroke="${fill}" stroke-width="0.008" stroke-opacity=".7"/>
+          <ellipse cx="0" cy="0" rx="${rx}" ry="${ry}" fill="${fill}" fill-opacity=".08" stroke="${fill}" stroke-width="0.012"/>
+          <ellipse cx="0" cy="0" rx="${rx * L.top}" ry="${ry * L.top}" fill="${fill}"/>
+          <circle cx="0" cy="0" r="${Math.min(rx, ry) * L.foot * 0.6}" fill="${glowColor || partColor("shade", f)}"/>`;
+      }
       if (shape === "pot") {
         const [cx, cy, rx, ry] = [lx + w / 2, ly + h / 2, w / 2, h / 2];
         return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${fill}"/>
@@ -1851,7 +1910,12 @@ export function furnitureSvg(f, { activeScreen = false, glowColor = null, tvPlay
         return `<polyline points="${pts.join(" ")}" fill="none" stroke="${partColor((opts?.stripes || ["main"])[0], f)}"
           stroke-width="0.04" stroke-linecap="round" stroke-linejoin="round"/>`;
       }
-      if (shape === "arc") {
+      if (shape === "rod") {
+        const { from, to, r0, r1 } = opts;
+        const [a, b] = [from, to].map(([x, y]) => [((x - 0.5) * f.w).toFixed(3), ((y - 0.5) * f.d).toFixed(3)]);
+        return `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${fill}" stroke-width="${r0 + r1}" stroke-linecap="round"/>`;
+      }
+      if (shape === "arc" || shape === "shell") {
         const { inner = 0, outer = 1, start = 0, end = 360 } = opts || {};
         const rx = ((x1 - x0) / 2) * f.w;
         const ry = ((y1 - y0) / 2) * f.d;
@@ -1941,6 +2005,24 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
     const sx = Math.max((x1 - x0) * f.w, 0.005);
     const sz = Math.max((y1 - y0) * f.d, 0.005);
     const sy = Math.max((z1 - z0) * f.h, 0.005);
+    if (shape === "rod") {
+      const { from, to, r0, r1 } = flag;
+      const [a, b] = [from, to].map(([x, y, z]) => new THREE.Vector3((x - 0.5) * f.w, z * f.h, (y - 0.5) * f.d));
+      const dir = b.clone().sub(a);
+      const geo = new THREE.CylinderGeometry(r1, r0, dir.length(), 14);
+      const rodMesh = new THREE.Mesh(geo, material(key));
+      rodMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+      rodMesh.position.copy(a).add(b).multiplyScalar(0.5);
+      rodMesh.castShadow = true;
+      rodMesh.receiveShadow = true;
+      rodMesh.userData.furniture = f;
+      group.add(rodMesh);
+      continue;
+    }
+    if (shape === "shell") {
+      group.add(shellMesh(THREE, f, [shape, x0, y0, x1, y1, z0, z1, key, flag], material(key)));
+      continue;
+    }
     if (shape === "arc") {
       const { inner = 0, outer = 1, start = 0, end = 360 } = flag || {};
       const p = (factor, deg) => arcPoint(f, x0, y0, x1, y1, factor, deg);
@@ -2001,6 +2083,10 @@ export function buildFurniture3D(THREE, f, { ceiling } = {}) {
     }
     if (shape === "timberflat") {
       group.add(flatShelterMesh(THREE, f, flag || {}, material(key)));
+      continue;
+    }
+    if (shape === "vertigo") {
+      group.add(vertigoMesh(THREE, f, material(key), material("shade"), material("dark")));
       continue;
     }
     if (shape === "pot") {
@@ -2593,6 +2679,166 @@ function flatShelterMesh(THREE, f, opts, wood) {
 }
 
 /** Round pot: tapered wall (open top), a rim and a soil surface just below it. */
+/**
+ * LABEL51 Wave dining chair: a tub-shaped back that curves down into the arms, a thick
+ * rounded seat, and four black legs that taper and splay out, joined by an X of thin bars.
+ * Shares of a 57 × 60 × 82 cm chair, seat at 48 cm.
+ */
+function waveChair() {
+  const seat = 0.585;
+  // Splayed legs: from under the seat out to the floor; where a leg is at height z
+  const legs = [[[0.2, 0.26, seat - 0.08], [0.06, 0.04, 0]], [[0.8, 0.26, seat - 0.08], [0.94, 0.04, 0]],
+    [[0.2, 0.78, seat - 0.08], [0.07, 0.97, 0]], [[0.8, 0.78, seat - 0.08], [0.93, 0.97, 0]]];
+  const on = ([a, b], z) => {
+    const t = (a[2] - z) / (a[2] - b[2]);
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, z];
+  };
+  const bar = 0.24;
+  return [
+    ...legs.map(([a, b]) => rod("dark", a, b, 0.015, 0.008)),
+    rod("dark", on(legs[0], bar), on(legs[3], bar), 0.005), rod("dark", on(legs[1], bar), on(legs[2], bar), 0.005),
+    plan(0.15, 0.22, 0.85, 0.82, seat - 0.09, seat - 0.07, "dark", roundRect(0, 0, 1, 1, 0.03)), // frame under the seat
+    shell(0, 0, 1, 1.12, seat - 0.1, 1, "main", { start: 168, end: 372, inner: 0.82, low: 0.18 }),
+    plan(0.05, 0.1, 0.95, 0.99, seat - 0.085, seat, "main", roundRect(0, 0, 1, 1, 0.12), { bevel: 0.03 }),
+  ];
+}
+
+/** A `shell` part: a lofted section (upright sides, rounded top) swept along its arc. */
+function shellMesh(THREE, f, part, mat) {
+  const [, x0, y0, x1, y1, z0, z1, , opts] = part;
+  const { inner = 0.8, start = 180, end = 360, low = 0.2 } = opts || {};
+  const [H0, H1] = [z0 * f.h, z1 * f.h];
+  const R = (((x1 - x0) * f.w + (y1 - y0) * f.d) / 4);
+  const half = ((1 - inner) * R) / 2; // radius of the rounded top, metres
+  const mid = (1 + inner) / 2;
+  // The section: up the outside, over the rounded top, down the inside ([radius share, height])
+  const section = (top) => {
+    const pts = [[1, H0], [1, top - half]];
+    for (let k = 1; k < 8; k++) {
+      const t = (k / 8) * Math.PI;
+      pts.push([mid + ((1 - inner) / 2) * Math.cos(t), top - half + half * Math.sin(t)]);
+    }
+    pts.push([inner, top - half], [inner, H0]);
+    return pts;
+  };
+  const steps = Math.max(12, Math.round((end - start) / 4));
+  const pos = [];
+  const idx = [];
+  let K = 0;
+  for (let i = 0; i <= steps; i++) {
+    const deg = start + ((end - start) * i) / steps;
+    const t = Math.abs((2 * i) / steps - 1); // 0 in the middle, 1 at the ends
+    const top = H0 + (H1 - H0) * (low + (1 - low) * (1 - t ** 2.5) ** 1.2);
+    const sec = section(Math.max(top, H0 + 2 * half));
+    K = sec.length;
+    for (const [r, z] of sec) {
+      const [x, y] = arcPoint(f, x0, y0, x1, y1, r, deg);
+      pos.push(x, z, y);
+    }
+  }
+  for (let i = 0; i < steps; i++) {
+    for (let k = 0; k < K - 1; k++) {
+      const a = i * K + k;
+      const b = a + K;
+      idx.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+    const a = i * K; // underside
+    idx.push(a + K - 1, a, a + K + K - 1, a, a + K, a + K + K - 1);
+  }
+  // End caps: a fan over each end's section
+  for (const i of [0, steps]) {
+    const base = i * K;
+    for (let k = 1; k < K - 1; k++) idx.push(base, base + k, base + k + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, Object.assign(mat.clone(), { side: THREE.DoubleSide }));
+  m.castShadow = true;
+  m.receiveShadow = true;
+  m.userData.furniture = f;
+  return m;
+}
+
+const VERTIGO_SPOKES = 56;
+
+/** The Vertigo (see vertigoLayout): flat strips for the spokes and the basket, a hoop, the bulb and its cord. */
+function vertigoMesh(THREE, f, mainMat, shadeMat, darkMat) {
+  const L = vertigoLayout(f.w, f.d);
+  const [rx, rz] = [f.w / 2, f.d / 2];
+  const at = (a, r, y) => new THREE.Vector3(Math.cos(a) * r * rx, y, Math.sin(a) * r * rz);
+  const g = new THREE.Group();
+  const add = (geo, mat, shadow = true) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = shadow;
+    m.receiveShadow = true;
+    m.userData.furniture = f;
+    g.add(m);
+  };
+  // Flat strips: each from p to q, `width` wide across `side`
+  const strips = (list, width) => {
+    const pos = [];
+    const idx = [];
+    for (const [p, q, side] of list) {
+      const h = side.clone().multiplyScalar(width / 2);
+      const n = pos.length / 3;
+      for (const v of [p.clone().sub(h), p.clone().add(h), q.clone().sub(h), q.clone().add(h)]) pos.push(v.x, v.y, v.z);
+      idx.push(n, n + 2, n + 1, n + 1, n + 2, n + 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return geo;
+  };
+  const both = Object.assign(mainMat.clone(), { side: THREE.DoubleSide });
+  const across = (a) => new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
+  // Brim: spokes from the basket's rim out to the hoop. Nothing of the open frame casts a
+  // shadow: with the bulb inside, its strips would stripe the whole room.
+  const spokes = [];
+  for (let i = 0; i < VERTIGO_SPOKES; i++) {
+    const a = (i / VERTIGO_SPOKES) * Math.PI * 2;
+    spokes.push([at(a, L.top, L.brim(a, L.top)), at(a, 1, L.brim(a, 1)), across(a)]);
+  }
+  add(strips(spokes, 0.01), both, false);
+  const hoop = [];
+  for (let i = 0; i < 120; i++) {
+    const a = (i / 120) * Math.PI * 2;
+    hoop.push(at(a, 1, L.brim(a, 1)));
+  }
+  add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hoop, true), 160, 0.005, 5, true), mainMat, false);
+  // Basket: upright strips, wider at the top, with a ring at the foot and the rim
+  const ups = [];
+  const n = Math.round(48 * L.R);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    ups.push([at(a, L.foot, L.lift), at(a, L.top, L.lift + L.basket), across(a)]);
+  }
+  add(strips(ups, Math.PI * 2 * L.foot * L.R / n * 0.55), both, false);
+  for (const [r, y] of [[L.foot, L.lift], [L.top, L.lift + L.basket]]) {
+    const ring = new THREE.CylinderGeometry(r * L.R, r * L.R, 0.015, 40, 1, true);
+    ring.scale(rx / L.R, 1, rz / L.R);
+    ring.translate(0, y + (y === L.lift ? 0.0075 : -0.0075), 0);
+    add(ring, both, false);
+  }
+  // Bulb, its socket and the cord up to the canopy
+  const bulb = new THREE.SphereGeometry(0.045, 20, 14);
+  bulb.translate(0, L.bulb, 0);
+  add(bulb, shadeMat, false);
+  const socket = new THREE.CylinderGeometry(0.02, 0.02, 0.06, 16);
+  socket.translate(0, L.bulb + 0.06, 0);
+  add(socket, darkMat);
+  const top = L.bulb + 0.09;
+  const cord = new THREE.CylinderGeometry(0.003, 0.003, f.h - top, 8);
+  cord.translate(0, (f.h + top) / 2, 0);
+  add(cord, darkMat);
+  const canopy = new THREE.CylinderGeometry(0.06, 0.06, 0.025, 28);
+  canopy.translate(0, f.h - 0.0125, 0);
+  add(canopy, mainMat);
+  return g;
+}
+
 function potMesh(THREE, f, part, wallMat, soilMat) {
   const [, x0, y0, x1, y1, z0, z1, , opts] = part;
   const taper = opts?.taper ?? 0.75;

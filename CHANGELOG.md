@@ -2,6 +2,11 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.6 (2026-10-18)
+
+- Petite Friture Vertigo pendant in three sizes
+- LABEL51 Wave dining chair
+
 ## 0.5.4 (2026-10-18)
 
 - Lights no longer recolour the floor
