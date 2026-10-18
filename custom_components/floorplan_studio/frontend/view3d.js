@@ -44,11 +44,15 @@ import {
 } from "./model.js";
 
 const HOT = new THREE.Color("#ff5a2c"); // a heating radiator warms up towards this
-import { baseHeight, beamHalfAngle, buildFurniture3D, catalogItem, lightAnchor, lightDirection, mergeSlices, pieceSounding, toWorld, tvSource } from "./furniture.js";
+import { baseHeight, beamHalfAngle, buildFurniture3D, catalogItem, containsPoint, lightAnchor, lightDirection, mergeSlices, pieceSounding, toWorld, tvSource } from "./furniture.js";
 import { ROOF_MATERIALS, finishMaterial, floorFinish, isOutdoor, roofFinish, wallFinish } from "./materials.js";
 import { roofGeometry } from "./roof.js";
 import { createArtwork, createDeviceDisplay, createTvScreen } from "./tvscreen.js";
 import { robotBusy, robotPose } from "./robot.js";
+import { LightSurface, addLampLight, contactShade, lightBlockers, liteThree } from "./bakedlight.js";
+
+// three.js with cheaper materials, for the light profile (see bakedlight.js)
+const LITE = liteThree(THREE);
 
 /**
  * Give a box world-scale UVs (metres) so textures keep their real size; along
@@ -388,7 +392,7 @@ export class FpsView3D extends HTMLElement {
     const r = this._renderer;
     this._pixelRatio = Math.min(window.devicePixelRatio || 1, this._q.pixelRatio);
     r.setPixelRatio(this._pixelRatio);
-    r.shadowMap.enabled = true;
+    r.shadowMap.enabled = !this._q.baked;
     r.shadowMap.type = this._q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     r.shadowMap.autoUpdate = false; // redrawn on demand, see _invalidateShadows()
     // Every shadow-casting light takes one of the GPU's texture slots in the
@@ -428,7 +432,7 @@ export class FpsView3D extends HTMLElement {
     this._scene.add(this._hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(20, 40, 12);
-    sun.castShadow = true;
+    sun.castShadow = !this._q.baked;
     sun.shadow.autoUpdate = false;
     sun.shadow.mapSize.set(this._q.sunShadow, this._q.sunShadow);
     sun.shadow.bias = -0.0005;
@@ -563,7 +567,7 @@ export class FpsView3D extends HTMLElement {
     if (this._raf || !this._renderer) return;
     this._raf = requestAnimationFrame(() => {
       this._raf = null;
-      if (this._shadowsDirty) this._renderShadows();
+      if (this._shadowsDirty && !this._q.baked) this._renderShadows();
       this._renderer.render(this._scene, this._camera);
       this._renderCompass();
       this._positionOverlay();
@@ -688,6 +692,8 @@ export class FpsView3D extends HTMLElement {
     this._pixelRatio = Math.min(window.devicePixelRatio || 1, this._q.pixelRatio);
     this._renderer.setPixelRatio(this._pixelRatio);
     this._renderer.shadowMap.type = this._q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this._renderer.shadowMap.enabled = !this._q.baked;
+    this._sun.castShadow = !this._q.baked;
     this._shadowBudget = Math.min(this._q.lampShadows, Math.max(0, this._renderer.capabilities.maxTextures - 4));
     const sunShadow = this._sun.shadow;
     if (sunShadow.mapSize.x !== this._q.sunShadow) {
@@ -696,7 +702,7 @@ export class FpsView3D extends HTMLElement {
       sunShadow.map = null;
     }
     this._scene.traverse((o) => {
-      for (const m of [].concat(o.material || [])) m.needsUpdate = true; // the new shadow type
+      for (const m of [].concat(o.material || [])) if (m) m.needsUpdate = true; // the new shadow type
     });
     this._resize();
     this._rebuild(); // light slots for the new number of lights
@@ -769,8 +775,15 @@ export class FpsView3D extends HTMLElement {
     this._scene.background = this._dayBg.clone();
     const wallColor = cssColor(this, "--fps-wall-3d", "#ecebe7");
     const slabColor = cssColor(this, "--fps-slab-3d", "#b9b7b1");
-    const wallMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
-    const slabMat = new THREE.MeshStandardMaterial({ color: slabColor, roughness: 1 });
+    // The light profile draws with cheaper materials (and no real lamp lights, see bakedlight.js)
+    const T = this._q.baked ? LITE : THREE;
+    if (this._T !== T) {
+      this._T = T;
+      this._doorMats = this._windowMats = this._glassMat = null; // made for the other profile
+    }
+    this._baked = [];
+    const wallMat = new T.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
+    const slabMat = new T.MeshStandardMaterial({ color: slabColor, roughness: 1 });
 
     const stack = stackFloors(this.doc.floors);
     const current = this.doc.floors.find((f) => f.id === this.floorId) || stack[0]?.floor;
@@ -781,6 +794,11 @@ export class FpsView3D extends HTMLElement {
       const g = new THREE.Group();
       g.position.y = elevation;
       const wallH = this.lowWalls ? Math.min(LOW_WALL, floor.wall_height) : floor.wall_height;
+      // Light profile: the lamps' light on floors, walls and furniture (bakedlight.js)
+      const firstRecord = this._dynamic.length;
+      const surface = this._q.baked ? new LightSurface(THREE, lightBlockers(floor, (w) => wallPieces(w, floor.openings, floor.wall_height))) : null;
+      const floorInfo = []; // per room: what the light grid needs
+      this._surface = surface; // (doors and windows add themselves to it)
 
       // Floor openings: cut out of the room floors (also from their shadows) and
       // lined with a slab-coloured rim
@@ -810,7 +828,7 @@ export class FpsView3D extends HTMLElement {
         if (onGround) geo.translate(0, -SLAB + 0.012 + 0.003 * outdoorRank.get(room.id), 0);
         const finish = floorFinish(room);
         const textured = finish.material !== "plain";
-        const topMat = textured ? finishMaterial(THREE, "floor", finish, room.floor_rotation || 0) : new THREE.MeshStandardMaterial({ roughness: 0.8 });
+        const topMat = textured ? finishMaterial(T, "floor", finish, room.floor_rotation || 0) : new T.MeshStandardMaterial({ roughness: 0.8 });
         if (holes.length) cutHoles(topMat, holes);
         const mesh = new THREE.Mesh(geo, [topMat, floorSlabMat]);
         if (holeDepthMat) mesh.customDepthMaterial = holeDepthMat;
@@ -825,6 +843,12 @@ export class FpsView3D extends HTMLElement {
           (m) => domainOf(m.entity_id) === "light" && pointInPolygon([m.x, m.y], room.points)
         );
         this._dynamic.push({ kind: "room", room, mat: topMat, hasLamp, finishColor: textured ? new THREE.Color(finish.color) : null });
+        floorInfo.push({
+          room, area: polygonArea(room.points),
+          y: onGround ? -SLAB + 0.012 + 0.003 * outdoorRank.get(room.id) : 0,
+          // (a pattern is darker than its base colour on average)
+          albedo: textured ? new THREE.Color(finish.color).multiplyScalar(0.75) : new THREE.Color(room.color || "#8ab4f8").lerp(new THREE.Color(0xf2f1ed), 0.65),
+        });
         const c = isOutdoor(room) ? labelPoint(room, floor.rooms.filter((x) => !isOutdoor(x) || polygonArea(x.points) < polygonArea(room.points))) : polygonCenter(room.points);
         // Float labels inside the room so walls don't hide them from typical angles
         this._overlayItems.push({ kind: "label", room,
@@ -857,7 +881,7 @@ export class FpsView3D extends HTMLElement {
         }
         if (!finish) return wallMat;
         const key = `${finish.material}|${finish.color}`;
-        if (!finishMats.has(key)) finishMats.set(key, finishMaterial(THREE, "wall", finish));
+        if (!finishMats.has(key)) finishMats.set(key, finishMaterial(T, "wall", finish));
         return finishMats.get(key);
       };
       const roomAt = (p) => {
@@ -949,6 +973,17 @@ export class FpsView3D extends HTMLElement {
             g.add(caster);
             this._shadowCasters.push(caster);
           }
+          if (surface) {
+            // The light grid on both faces, in the finish of the room each one faces
+            for (const side of [1, -1]) {
+              const start = [wall.a[0] + u[0] * from + n[0] * half * side, wall.a[1] + u[1] * from + n[1] * half * side];
+              const albedoAt = (s) => {
+                const sp = spans.find((x) => from + s >= x.from - 1e-6 && from + s <= x.to + 1e-6) || spans[0];
+                return faceMat(side > 0 ? sp.plus : sp.minus).color;
+              };
+              surface.addWallFace(start, u, [n[0] * side, n[1] * side], to - from, Math.max(0, pc.bottom), pc.top, albedoAt);
+            }
+          }
         }
 
         if (wallH < floor.wall_height) {
@@ -1008,7 +1043,7 @@ export class FpsView3D extends HTMLElement {
       };
       for (const f of floor.furniture || []) {
         const drop = dropOf(f);
-        const { group, mats, spinner, ambilight, drum, load } = buildFurniture3D(THREE, f, { ceiling: floor.wall_height });
+        const { group, mats, spinner, ambilight, drum, load } = buildFurniture3D(T, f, { ceiling: floor.wall_height });
         group.position.y -= drop;
         if (drum && f.entity_id) {
           this._laundry.push({ f, def: catalogItem(f.type), group, drum, load, base: group.position.clone(), angle: 0, speed: 0,
@@ -1025,6 +1060,12 @@ export class FpsView3D extends HTMLElement {
         }
         group.traverse((o) => o.isMesh && this._tapMeshes.push(o));
         const def = catalogItem(f.type);
+        if (surface && !def.hole) {
+          // The lamps' light at the piece's middle, added to all its parts' colour
+          const uniform = { value: new THREE.Color(0, 0, 0) };
+          group.traverse((o) => [].concat(o.material || []).forEach((m) => addLampLight(m, uniform)));
+          surface.addProbe([f.x, baseHeight(f, floor.wall_height) - drop + f.h / 2, f.y], uniform, f.id);
+        }
         // Big screens (TVs, projector screens) show a small looping programme while on
         const tv = def.screenLight ? createTvScreen(THREE, f.id) : null;
         if (tv) for (const m of mats.screen) m.emissiveMap = tv.texture;
@@ -1090,6 +1131,27 @@ export class FpsView3D extends HTMLElement {
         }
       }
 
+      if (surface && floorInfo.length) {
+        // The light grid on the floor, darker along the walls and under furniture
+        const pts = floor.rooms.flatMap((r) => r.points);
+        const bounds = { minX: Math.min(...pts.map((p) => p[0])), maxX: Math.max(...pts.map((p) => p[0])),
+          minY: Math.min(...pts.map((p) => p[1])), maxY: Math.max(...pts.map((p) => p[1])) };
+        const at = (x, z) => {
+          let best = null;
+          for (const r of floorInfo) if ((!best || r.area < best.area) && pointInPolygon([x, z], r.room.points)) best = r;
+          return best;
+        };
+        const feet = (floor.furniture || []).filter((f) => {
+          const def = catalogItem(f.type);
+          return !def.hole && !def.ceiling && !((f.z || 0) > 0.05) && f.h > 0.08;
+        });
+        surface.addFloor(bounds, at, (x, z) => holes.some((f) => containsPoint(f, [x, z])), contactShade(floor.walls, feet));
+        const mesh = surface.build();
+        if (mesh) g.add(mesh);
+        this._baked.push({ surface, elevation, records: this._dynamic.slice(firstRecord).filter(isLightRecord) });
+      }
+      this._surface = null;
+
       // Roofs on top of this floor's walls (not with low walls: they'd float)
       if (this.showRoofs && !this.lowWalls) {
         for (const roof of floor.roofs || []) this._addRoof(g, roof, floor.wall_height, wallMat);
@@ -1115,7 +1177,7 @@ export class FpsView3D extends HTMLElement {
       const center = box.getCenter(new THREE.Vector3());
       const span = Math.max(size.x, size.z, 10) * 3;
       this._dayGround = this._dayBg.clone().lerp(new THREE.Color(0x808078), 0.18);
-      this._groundMat = new THREE.MeshStandardMaterial({ color: this._dayGround.clone(), roughness: 1 });
+      this._groundMat = new T.MeshStandardMaterial({ color: this._dayGround.clone(), roughness: 1 });
       const ground = new THREE.Mesh(new THREE.PlaneGeometry(span, span), this._groundMat);
       ground.rotation.x = -Math.PI / 2;
       const minY = Math.min(0, box.min.y);
@@ -1152,9 +1214,9 @@ export class FpsView3D extends HTMLElement {
     const slope = roof.type === "flat" ? 0 : Math.tan(((roof.pitch ?? 35) * Math.PI) / 180);
     wallTop += 0.16 * slope + 0.02;
     const finish = roofFinish(roof);
-    const top = finishMaterial(THREE, "roof", finish);
-    const under = new THREE.MeshStandardMaterial({ color: 0xd9d2c4, roughness: 0.9 });
-    const fascia = new THREE.MeshStandardMaterial({ color: new THREE.Color(finish.color).multiplyScalar(0.7), roughness: 0.8 });
+    const top = finishMaterial(this._T, "roof", finish);
+    const under = new this._T.MeshStandardMaterial({ color: 0xd9d2c4, roughness: 0.9 });
+    const fascia = new this._T.MeshStandardMaterial({ color: new THREE.Color(finish.color).multiplyScalar(0.7), roughness: 0.8 });
     const [tw, th] = Array.isArray(ROOF_MATERIALS[finish.material]?.tile) ? ROOF_MATERIALS[finish.material].tile : [1, 1];
     const THICK = 0.12;
     const pos = [];
@@ -1288,12 +1350,13 @@ export class FpsView3D extends HTMLElement {
    * (animated) to the same side as the 2D swing symbol.
    */
   _addDoor(g, o, op, wall, at, angle, w, h) {
-    const m = this._doorMats || (this._doorMats = {
-      frame: new THREE.MeshStandardMaterial({ color: 0xded8cc, roughness: 0.7 }),
-      leaf: new THREE.MeshStandardMaterial({ color: 0xece7de, roughness: 0.6 }),
-      panel: new THREE.MeshStandardMaterial({ color: 0xe0d9cb, roughness: 0.6 }),
-      metal: new THREE.MeshStandardMaterial({ color: 0xa4a9ae, roughness: 0.3, metalness: 0.7 }),
+    const shared = this._doorMats || (this._doorMats = {
+      frame: new this._T.MeshStandardMaterial({ color: 0xded8cc, roughness: 0.7 }),
+      leaf: new this._T.MeshStandardMaterial({ color: 0xece7de, roughness: 0.6 }),
+      panel: new this._T.MeshStandardMaterial({ color: 0xe0d9cb, roughness: 0.6 }),
+      metal: new this._T.MeshStandardMaterial({ color: 0xa4a9ae, roughness: 0.3, metalness: 0.7 }),
     });
+    const m = this._openingLight(shared, at((op.from + op.to) / 2, (op.sill + op.top) / 2));
     const depth = wall.thickness + 0.02;
     const addBox = (parent, sx, sy, sz, x, y, z, mat, cast = true) => {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
@@ -1331,7 +1394,7 @@ export class FpsView3D extends HTMLElement {
     } else {
       // Glass: a frame of stiles and rails around the pane(s); half glass has a solid
       // lower part (with one raised panel), full glass a slim bottom rail
-      const glass = this._glassMat || (this._glassMat = new THREE.MeshStandardMaterial({
+      const glass = this._glassMat || (this._glassMat = new this._T.MeshStandardMaterial({
         color: 0xbfe3ff, transparent: true, opacity: 0.3, roughness: 0.05, metalness: 0.1 }));
       const S = Math.min(0.11, lw * 0.16); // stile / rail width
       const half = style === "half_glass" || style === "half_glass_single";
@@ -1379,7 +1442,7 @@ export class FpsView3D extends HTMLElement {
    * into the wall on both sides like pocket doors.
    */
   _addSlidingDoor(g, o, op, at, angle, w, h, m, addBox) {
-    const glass = this._glassMat || (this._glassMat = new THREE.MeshStandardMaterial({
+    const glass = this._glassMat || (this._glassMat = new this._T.MeshStandardMaterial({
       color: 0xbfe3ff, transparent: true, opacity: 0.3, roughness: 0.05, metalness: 0.1 }));
     const inner = Math.max(0.2, w - 2 * FRAME);
     const lw = inner / 2 + 0.01; // a little overlap where they meet
@@ -1421,11 +1484,12 @@ export class FpsView3D extends HTMLElement {
    * (animated) to the side chosen with "Flip opening".
    */
   _addWindow(g, o, op, wall, at, angle, w, h) {
-    const m = this._windowMats || (this._windowMats = {
-      frame: new THREE.MeshStandardMaterial({ color: 0xf2f2ef, roughness: 0.5 }),
-      glass: new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: 0.32, roughness: 0.05, metalness: 0.1 }),
-      metal: new THREE.MeshStandardMaterial({ color: 0xb4b9be, roughness: 0.3, metalness: 0.7 }),
+    const shared = this._windowMats || (this._windowMats = {
+      frame: new this._T.MeshStandardMaterial({ color: 0xf2f2ef, roughness: 0.5 }),
+      glass: new this._T.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: 0.32, roughness: 0.05, metalness: 0.1 }),
+      metal: new this._T.MeshStandardMaterial({ color: 0xb4b9be, roughness: 0.3, metalness: 0.7 }),
     });
+    const m = this._openingLight(shared, at((op.from + op.to) / 2, (op.sill + op.top) / 2));
     const addBox = (parent, sx, sy, sz, x, y, z, mat, cast = true) => {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
       mesh.position.set(x, y, z);
@@ -1476,6 +1540,19 @@ export class FpsView3D extends HTMLElement {
   }
 
   /** Soft bluish light shining out of a big screen (TV, projector screen) while it's on. */
+  /**
+   * Light profile: a door's or window's own copy of the shared materials, lit by the lamps
+   * around `pos` (bakedlight.js); otherwise the shared ones.
+   */
+  _openingLight(mats, pos) {
+    if (!this._surface) return mats;
+    const uniform = { value: new THREE.Color(0, 0, 0) };
+    const own = Object.fromEntries(Object.entries(mats).map(([k, mat]) => [k, mat.clone()]));
+    Object.values(own).forEach((mat) => addLampLight(mat, uniform));
+    this._surface.addProbe([pos.x, pos.y, pos.z], uniform, null);
+    return own;
+  }
+
   _addScreenLight(g, f, sl, base) {
     const [x, y] = toWorld(f, [0, (sl.y - 0.5) * f.d]);
     const [tx, ty] = toWorld(f, [0, f.d / 2 + 3]); // 3 m in front of the screen
@@ -1499,6 +1576,10 @@ export class FpsView3D extends HTMLElement {
    * stripes and staircases); a point light's six 90° shadow maps can.
    */
   _buildLightPool() {
+    if (this._q?.baked) {
+      this._lightPool = []; // lamps light through bakedlight.js
+      return;
+    }
     const count = Math.min(this._q?.maxLights ?? MAX_LIGHTS, this._dynamic.filter(isLightRecord).length);
     this._lightPool = [];
     for (let i = 0; i < count; i++) {
@@ -1531,6 +1612,7 @@ export class FpsView3D extends HTMLElement {
    * centre, with their summed intensity), so every lamp still lights the room.
    */
   _assignLights() {
+    if (this._q?.baked) return; // no real lights (see _updateBaked)
     const pool = this._lightPool || [];
     let groups = this._dynamic.filter((d) => isLightRecord(d) && d.intensity > 0)
       .map((d) => ({ kind: d.kind, members: [d], intensity: d.intensity, pos: d.light.pos.clone(),
@@ -2097,6 +2179,7 @@ export class FpsView3D extends HTMLElement {
     }
     this._assignLights();
     this._assignShadows();
+    this._updateBaked();
     this._poseRobots();
     this._startPulseLoop();
     this._updateOverlayContent();
@@ -2108,6 +2191,36 @@ export class FpsView3D extends HTMLElement {
       this._invalidateShadows();
     }
     this.requestRender();
+  }
+
+  /**
+   * Light profile: colour the floors' light grids and the furniture for the lamps that are
+   * on (bakedlight.js). Each lamp is described once (where it shines, how wide); how far its
+   * light gets is worked out the first time it's on and kept.
+   */
+  _updateBaked() {
+    if (!this._q?.baked || !this._baked?.length) return;
+    // About how bright sky and sun make a surface: lamps add less to a bright room
+    const ambient = Math.min(1, (this._hemi.intensity * 0.5 + this._sun.intensity * 0.25) / Math.PI);
+    for (const { surface, elevation, records } of this._baked) {
+      const lamps = records.filter((d) => d.intensity > 0).map((d) => {
+        if (!d.bake) {
+          const l = d.light;
+          const dir = l.target.clone().sub(l.pos).normalize();
+          const all = !!(d.marker?.type && catalogItem(d.marker.type).light?.all);
+          const wide = d.kind !== "screenlight" && (all || (dir.y <= 0 && l.angle >= WIDE_LAMP));
+          d.bake = {
+            key: d, id: d.marker?.id ?? d.f?.id,
+            pos: [l.pos.x, l.pos.y - elevation, l.pos.z], dir: [dir.x, dir.y, dir.z], distance: l.distance,
+            // (wide lamps light all round with the share of light their cone gives, as in _assignLights)
+            cosOuter: wide ? null : Math.cos(l.angle), cosInner: Math.cos(l.angle * (1 - l.penumbra)),
+            power: wide ? coneShare(l.angle, l.penumbra) : 1,
+          };
+        }
+        return { ...d.bake, color: [d.light.color.r * d.intensity, d.light.color.g * d.intensity, d.light.color.b * d.intensity] };
+      });
+      surface.update(lamps, ambient);
+    }
   }
 
   /** Where the light slots are and which cast shadows (see _applyStates). */

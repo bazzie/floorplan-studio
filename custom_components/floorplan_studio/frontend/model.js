@@ -376,13 +376,35 @@ export const isUnavailable = (stateObj) =>
 const COLOR_MODES = ["hs", "xy", "rgb", "rgbw", "rgbww"];
 
 /**
- * The colour a light is set to, or null for lights you can't set a colour on
- * (plain and tunable-white lights, whose rgb_color is derived from their white).
+ * A white light's colour at a colour temperature (K), as it looks in the room: a
+ * blackbody's colour (Tanner Helland's fit), taken a good way towards white. Eyes adapt
+ * to the light around them: a 2000 K lamp reads as a cosy amber, not the deep orange of
+ * its raw colour (255, 137, 14), and 2700 K as ordinary warm white.
+ */
+export function kelvinRgb(kelvin) {
+  const t = Math.min(10000, Math.max(1500, kelvin)) / 100;
+  const clamp = (v) => Math.min(255, Math.max(0, v));
+  const r = t <= 66 ? 255 : clamp(329.698727446 * (t - 60) ** -0.1332047592);
+  const g = t <= 66 ? clamp(99.4708025861 * Math.log(t) - 161.1195681661) : clamp(288.1221695283 * (t - 60) ** -0.0755148492);
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : clamp(138.5177312231 * Math.log(t - 10) - 305.0447927307);
+  const ADAPT = 0.55; // how far towards white
+  return [r, g, b].map((c) => Math.round(c + (255 - c) * ADAPT));
+}
+
+/**
+ * The colour a light shines in: its colour, or for white light the colour of its colour
+ * temperature (see kelvinRgb); null when it has neither (a plain dimmable light).
  */
 function lightRgb(stateObj) {
-  const modes = stateObj?.attributes?.supported_color_modes;
-  if (Array.isArray(modes) && !modes.some((m) => COLOR_MODES.includes(m))) return null;
-  const rgb = stateObj?.attributes?.rgb_color;
+  const a = stateObj?.attributes || {};
+  const modes = a.supported_color_modes;
+  const colour = Array.isArray(modes) ? modes.some((m) => COLOR_MODES.includes(m)) : true;
+  // White light (a tunable-white lamp, or a colour lamp set to a white): HA's rgb_color
+  // for it is the raw blackbody colour, far too orange for warm white
+  const kelvin = a.color_temp_kelvin ?? (a.color_temp ? 1e6 / a.color_temp : null);
+  if ((!colour || a.color_mode === "color_temp") && kelvin) return `rgb(${kelvinRgb(kelvin).join(",")})`;
+  if (!colour) return null;
+  const rgb = a.rgb_color;
   return Array.isArray(rgb) && rgb.length === 3 ? `rgb(${rgb.join(",")})` : null;
 }
 

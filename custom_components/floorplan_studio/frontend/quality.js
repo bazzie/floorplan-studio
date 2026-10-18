@@ -23,6 +23,7 @@ const PROFILES = {
     maxLights: 16,
     fps: 60, // animation (sound waves, a turning drum, a driving robot)
     blur: true, // blurred glows in 2D (ambilight, radiator heat)
+    baked: false, // real lamp lights with shadow maps (see bakedlight.js for the other way)
   },
   low: {
     pixelRatio: 1,
@@ -36,6 +37,10 @@ const PROFILES = {
     maxLights: 4,
     fps: 30,
     blur: false,
+    // No real lights or shadow maps in 3D: lamp light is worked out once per change and
+    // painted onto floors, walls and furniture, contact shadows are painted in, and
+    // surfaces use a cheaper material (bakedlight.js)
+    baked: true,
   },
 };
 

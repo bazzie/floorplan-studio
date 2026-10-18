@@ -2,6 +2,12 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.4.2 (2026-10-18)
+
+- 3D light profile: lamp light painted on instead of real lights and shadow maps
+- White light by its colour temperature, as the eye sees it
+- Light profile: clean spotlight pools, lit doors and windows
+
 ## 0.4.1 (2026-10-17)
 
 - 3D: far fewer draw calls (fixed parts merged per material)
