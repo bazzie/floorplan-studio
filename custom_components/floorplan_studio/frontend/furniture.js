@@ -87,7 +87,7 @@
 // Items that stand on a desk or TV unit start their parts part-way up (e.g. a
 // monitor's parts begin at 0.75 m), so they sit at the right height when placed
 // on top of that furniture.
-import { clone, consolePlaying, domainOf, foregroundApp, friendlyName, isPlaying, isScreenOn, isSounding, safeColor, surroundLevel, uid } from "./model.js";
+import { clone, consolePlaying, domainOf, foregroundApp, friendlyName, isPlaying, isScreenOn, isSounding, safeColor, subLevel, surroundLevel, uid } from "./model.js";
 import { t } from "./i18n.js";
 
 const SONOS_BLACK = "#232325";
@@ -840,17 +840,17 @@ export const CATALOG = {
     box(0, 0, 1, 1, 0.75, 1, "main"), box(0.3, 1, 0.7, 1.01, 0.86, 0.92, "screen"),
     cyl(0.05, 1, 0.17, 1.04, 0.82, 0.96, "metal"), cyl(0.83, 1, 0.95, 1.04, 0.82, 0.96, "metal")] },
   // Samsung The Frame (LS03A): 65" 1453 x 832 x 25 mm, 55" 1231 x 703 x 25 mm, hung flat on the wall
-  the_frame_65: { label: "Samsung The Frame 65\" (on the wall)", icon: "mdi:television-classic", cat: "Multimedia", av: "display", w: 1.453, d: 0.05, h: 0.832,
+  the_frame_65: { label: "The Frame 65\" (on the wall)", icon: "mdi:television-classic", cat: "Samsung", av: "display", w: 1.453, d: 0.05, h: 0.832,
     z: 1.0, color: "#2a2b2d", screen: true, art: true, screenLight: { y: 1, z: 0.5 }, parts: theFrame() },
-  the_frame_55: { label: "Samsung The Frame 55\" (on the wall)", icon: "mdi:television-classic", cat: "Multimedia", av: "display", w: 1.231, d: 0.05, h: 0.703,
+  the_frame_55: { label: "The Frame 55\" (on the wall)", icon: "mdi:television-classic", cat: "Samsung", av: "display", w: 1.231, d: 0.05, h: 0.703,
     z: 1.05, color: "#2a2b2d", screen: true, art: true, screenLight: { y: 1, z: 0.5 }, parts: theFrame() },
   // DALI Opticon 6 MK2: 195 x 330 x 1000 mm floorstander (plinth wider)
-  dali_opticon6: { label: "DALI Opticon 6 MK2 (floorstanding)", icon: "mdi:speaker", cat: "Multimedia", passive: true, w: 0.195, d: 0.33, h: 1.0,
+  dali_opticon6: { label: "Opticon 6 MK2 (floorstanding)", icon: "mdi:speaker", cat: "DALI", passive: true, w: 0.195, d: 0.33, h: 1.0,
     color: "#222120", parts: opticon6() },
   // DALI Opticon 2: 195 x 293 x 350 mm (w x d x h, with grille)
-  dali_opticon2: { label: "DALI Opticon 2 (bookshelf speaker)", icon: "mdi:speaker", cat: "Multimedia", passive: true, w: 0.195, d: 0.293, h: 0.35, z: 0.6,
+  dali_opticon2: { label: "Opticon 2 (bookshelf speaker)", icon: "mdi:speaker", cat: "DALI", passive: true, w: 0.195, d: 0.293, h: 0.35, z: 0.6,
     color: "#222120", parts: opticon2() },
-  dali_opticon2_stand: { label: "DALI Opticon 2 on a stand", icon: "mdi:speaker", cat: "Multimedia", passive: true, w: 0.26, d: 0.32, h: 0.95, color: "#222120",
+  dali_opticon2_stand: { label: "Opticon 2 on a stand", icon: "mdi:speaker", cat: "DALI", passive: true, w: 0.26, d: 0.32, h: 0.95, color: "#222120",
     parts: [
       box(0, 0, 1, 1, 0, 0.022, "dark"), // stand base plate
       box(0.4, 0.38, 0.6, 0.62, 0.022, 0.61, "dark"), // column
@@ -858,7 +858,7 @@ export const CATALOG = {
       ...opticon2(0.125, 0.875, 0.04, 0.96, 0.63, 1)] },
   // NAD T 778 (435 x 133 x 406 mm, graphite): 5" colour touchscreen, volume knob on the right
   // Apple TV 4K (93 x 93 x 31 mm, black): rounded box on a recessed foot, logo on top
-  apple_tv: { label: "Apple TV 4K (on TV unit)", icon: "mdi:apple", cat: "Multimedia", av: "source", w: 0.093, d: 0.093, h: 0.031, z: 0.5,
+  apple_tv: { label: "Apple TV 4K (on TV unit)", icon: "mdi:apple", cat: "Apple", av: "source", w: 0.093, d: 0.093, h: 0.031, z: 0.5,
     color: "#1c1c1e", parts: [
     box(0.08, 0.08, 0.92, 0.92, 0, 0.12, "dark"), // recessed foot
     box(0.02, 0.02, 0.98, 0.98, 0.12, 1, "main"),
@@ -866,7 +866,7 @@ export const CATALOG = {
     box(0.04, 0, 0.96, 1, 0.22, 0.9, "main"),
     cyl(0.42, 0.4, 0.58, 0.58, 1, 1.03, "graphite"), // logo
     box(0.47, 1, 0.53, 1.01, 0.45, 0.6, "white")] }, // status light
-  nad_t778: { label: "NAD T 778 AV receiver (on TV unit)", icon: "mdi:audio-video", cat: "Multimedia", av: "receiver", w: 0.435, d: 0.406, h: 0.133, z: 0.5,
+  nad_t778: { label: "T 778 AV receiver (on TV unit)", icon: "mdi:audio-video", cat: "NAD", av: "receiver", w: 0.435, d: 0.406, h: 0.133, z: 0.5,
     color: "#2a2b2d", screen: true, display: "NAD", parts: [
     ...[[0.06, 0.08], [0.94, 0.08], [0.06, 0.88], [0.94, 0.88]].map(([x, y]) => cyl(x - 0.04, y - 0.04, x + 0.04, y + 0.04, 0, 0.1, "dark")),
     box(0, 0, 1, 0.94, 0.1, 1, "main"), // chassis
@@ -879,14 +879,14 @@ export const CATALOG = {
     cyl(0.14, 0.975, 0.17, 0.99, 0.22, 0.31, "dark", "front"), // headphone socket
     box(0.04, 0.975, 0.16, 0.982, 0.75, 0.82, "metal")] }, // NAD logo plate
   // PlayStation 5 (390 x 104 x 260 mm): black core between two white wings, blue light along the seams
-  playstation_5: { label: "PlayStation 5 (standing)", icon: "mdi:sony-playstation", cat: "Multimedia", av: "source", w: 0.104, d: 0.26, h: 0.4,
+  playstation_5: { label: "PlayStation 5 (standing)", icon: "mdi:sony-playstation", cat: "Sony", av: "source", w: 0.104, d: 0.26, h: 0.4,
     color: COLORS.white, screen: true, parts: [
     box(0.2, 0.25, 0.8, 0.75, 0, 0.025, "dark"), // stand
     box(0.2, 0.03, 0.8, 0.97, 0.03, 0.97, "dark"), // core
     box(0, 0, 0.2, 1, 0.025, 1, "main"), box(0.8, 0, 1, 1, 0.025, 1, "main"), // wings
     box(0.19, 0.99, 0.23, 1.005, 0.06, 0.94, "screen"), box(0.77, 0.99, 0.81, 1.005, 0.06, 0.94, "screen"), // light
     box(0.35, 0.995, 0.65, 1.003, 0.6, 0.62, "metal")] }, // disc slot
-  playstation_5_flat: { label: "PlayStation 5 (lying, on TV unit)", icon: "mdi:sony-playstation", cat: "Multimedia", av: "source", w: 0.39, d: 0.26, h: 0.104, z: 0.5,
+  playstation_5_flat: { label: "PlayStation 5 (lying, on TV unit)", icon: "mdi:sony-playstation", cat: "Sony", av: "source", w: 0.39, d: 0.26, h: 0.104, z: 0.5,
     color: COLORS.white, screen: true, parts: [
     box(0.03, 0.03, 0.97, 0.97, 0.18, 0.82, "dark"), // core
     box(0, 0, 1, 1, 0, 0.18, "main"), box(0, 0, 1, 1, 0.82, 1, "main"), // wings
@@ -934,11 +934,11 @@ export const CATALOG = {
     profile(0.982, 0, 1, 1, 0, 1, "grille", roundRect(0, 0, 1, 1, 0.018), 0.004)] },
   sonos_ray: { label: "Ray", icon: "mdi:soundbar", cat: "Sonos", speaker: true, homeTheater: true, w: 0.559, d: 0.095, h: 0.071, z: 0.5, color: SONOS_BLACK, media: true, parts: [
     box(0, 0, 1, 1, 0, 1, "main"), box(0.02, 0.85, 0.98, 1.0, 0.1, 0.65, "main2"), box(0.44, 0.3, 0.56, 0.6, 1, 1.03, "dark")] },
-  sonos_sub: { label: "Sub", icon: "mdi:surround-sound", cat: "Sonos", speaker: true, w: 0.402, d: 0.158, h: 0.389, color: SONOS_BLACK, media: true, parts: [
+  sonos_sub: { label: "Sub", icon: "mdi:surround-sound", cat: "Sonos", speaker: true, sub: true, w: 0.402, d: 0.158, h: 0.389, color: SONOS_BLACK, media: true, parts: [
     // the Sub's signature hole straight through the middle
     box(0, 0, 1, 1, 0, 0.18, "main"), box(0, 0, 1, 1, 0.82, 1, "main"),
     box(0, 0, 0.18, 1, 0.18, 0.82, "main"), box(0.82, 0, 1, 1, 0.18, 0.82, "main")] },
-  sonos_sub_mini: { label: "Sub Mini", icon: "mdi:surround-sound", cat: "Sonos", speaker: true, w: 0.23, d: 0.23, h: 0.305, color: SONOS_BLACK, media: true, parts: [
+  sonos_sub_mini: { label: "Sub Mini", icon: "mdi:surround-sound", cat: "Sonos", speaker: true, sub: true, w: 0.23, d: 0.23, h: 0.305, color: SONOS_BLACK, media: true, parts: [
     cyl(0, 0, 1, 1, 0, 1, "main"), cyl(0.35, 0.35, 0.65, 0.65, 1, 1.01, "dark")] },
   sonos_move: { label: "Move 2", icon: "mdi:speaker-bluetooth", cat: "Sonos", speaker: true, w: 0.16, d: 0.127, h: 0.241, color: SONOS_BLACK, media: true, parts: [
     cyl(0, 0, 1, 1, 0, 1, "main"), box(0.3, 0.9, 0.7, 1.02, 0.85, 0.95, "dark"), box(0.25, 0.3, 0.75, 0.6, 1, 1.02, "dark")] },
@@ -1242,30 +1242,30 @@ export const CATALOG = {
   corner_sofa_left: cornerSofa(true),
 
   // Ligne Roset Togo: 70 cm high, seat at 38 cm, 102 cm deep (the ottoman 87 x 80 x 34 cm)
-  togo_chair: { label: "Togo fireside chair (Ligne Roset)", icon: "mdi:sofa-single", cat: "Living", w: 0.87, d: 1.02, h: 0.7,
+  togo_chair: { label: "Togo fireside chair", icon: "mdi:sofa-single", cat: "Ligne Roset", w: 0.87, d: 1.02, h: 0.7,
     color: TOGO, parts: togo(0.87) },
-  togo_loveseat: { label: "Togo loveseat, 2-seat (Ligne Roset)", icon: "mdi:sofa-outline", cat: "Living", w: 1.31, d: 1.02, h: 0.7,
+  togo_loveseat: { label: "Togo loveseat, 2-seat", icon: "mdi:sofa-outline", cat: "Ligne Roset", w: 1.31, d: 1.02, h: 0.7,
     color: TOGO, parts: togo(1.31) },
-  togo_sofa: { label: "Togo sofa, 3-seat (Ligne Roset)", icon: "mdi:sofa", cat: "Living", w: 1.74, d: 1.02, h: 0.7,
+  togo_sofa: { label: "Togo sofa, 3-seat", icon: "mdi:sofa", cat: "Ligne Roset", w: 1.74, d: 1.02, h: 0.7,
     color: TOGO, parts: togo(1.74, { arms: true }) },
-  togo_corner: { label: "Togo corner (Ligne Roset)", icon: "mdi:sofa-single-outline", cat: "Living", w: 1.02, d: 1.02, h: 0.7,
+  togo_corner: { label: "Togo corner", icon: "mdi:sofa-single-outline", cat: "Ligne Roset", w: 1.02, d: 1.02, h: 0.7,
     color: TOGO, parts: togo(1.02, { corner: true }) },
-  togo_ottoman: { label: "Togo ottoman (Ligne Roset)", icon: "mdi:square-rounded-outline", cat: "Living", w: 0.87, d: 0.8, h: 0.34,
+  togo_ottoman: { label: "Togo ottoman", icon: "mdi:square-rounded-outline", cat: "Ligne Roset", w: 0.87, d: 0.8, h: 0.34,
     color: TOGO, parts: togo(0.87, { ottoman: true }) },
 
-  security_camera: { label: "Security camera (wall)", icon: "mdi:cctv", cat: "Security", w: 0.1, d: 0.2, h: 0.12, z: 2.4, color: COLORS.white,
+  security_camera: { label: "Security camera (wall)", icon: "mdi:cctv", cat: "Eufy", w: 0.1, d: 0.2, h: 0.12, z: 2.4, color: COLORS.white,
     fov: { angle: 110, range: 5 }, parts: [
     box(0.12, 0, 0.88, 0.08, 0.05, 0.95, "main"), cyl(0.35, 0.08, 0.65, 0.35, 0.35, 0.65, "main"),
     box(0.05, 0.3, 0.95, 0.94, 0.12, 0.95, "main"), cyl(0.2, 0.92, 0.8, 1, 0.25, 0.85, "dark")] },
-  floodlight_camera: { label: "Floodlight camera", icon: "mdi:cctv", cat: "Security", w: 0.3, d: 0.18, h: 0.2, z: 2.4, color: COLORS.white,
+  floodlight_camera: { label: "Floodlight camera", icon: "mdi:cctv", cat: "Eufy", w: 0.3, d: 0.18, h: 0.2, z: 2.4, color: COLORS.white,
     fov: { angle: 130, range: 6 }, floodlight: { angle: 110, range: 8 }, parts: [
     box(0.3, 0, 0.7, 0.12, 0.2, 0.9, "main"), box(0, 0.12, 0.45, 0.6, 0.55, 1, "main"), box(0.55, 0.12, 1, 0.6, 0.55, 1, "main"),
     box(0.02, 0.6, 0.43, 0.66, 0.6, 0.95, "canvas"), box(0.57, 0.6, 0.98, 0.66, 0.6, 0.95, "canvas"),
     box(0.35, 0.3, 0.65, 0.95, 0, 0.45, "main"), cyl(0.42, 0.92, 0.58, 1, 0.1, 0.35, "dark")] },
-  indoor_camera: { label: "Indoor camera", icon: "mdi:webcam", cat: "Security", w: 0.08, d: 0.08, h: 0.12, z: 0.75, color: COLORS.white,
+  indoor_camera: { label: "Indoor camera", icon: "mdi:webcam", cat: "Eufy", w: 0.08, d: 0.08, h: 0.12, z: 0.75, color: COLORS.white,
     fov: { angle: 125, range: 4 }, parts: [
     cyl(0, 0, 1, 1, 0, 0.35, "main"), ball(0.05, 0.05, 0.95, 0.95, 0.3, 1, "main"), cyl(0.3, 0.85, 0.7, 1, 0.5, 0.8, "dark")] },
-  homebase: { label: "HomeBase / hub", icon: "mdi:router-wireless", cat: "Security", w: 0.2, d: 0.2, h: 0.08, z: 0.75, color: COLORS.white, parts: [
+  homebase: { label: "HomeBase / hub", icon: "mdi:router-wireless", cat: "Eufy", w: 0.2, d: 0.2, h: 0.08, z: 0.75, color: COLORS.white, parts: [
     box(0, 0, 1, 1, 0, 0.9, "main"), box(0.1, 0.1, 0.9, 0.9, 0.9, 1, "main2"), box(0.45, 0.98, 0.55, 1.01, 0.4, 0.6, "dark")] },
   stairs: { label: "Staircase", icon: "mdi:stairs", cat: "Structure", w: 0.9, d: 3.6, h: STAIR_H, color: COLORS.wood,
     parts: straightStairs() },
@@ -1279,7 +1279,15 @@ export const CATALOG = {
     box(0, 0, 1, 1, 0, 1, "main")] },
 };
 
-export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
+export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Samsung", "DALI", "Apple", "NAD", "Sony", "Ligne Roset", "Eufy", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
+
+/** Categories shown inside another one in the catalog (a brand's range under its kind of thing). */
+export const SUBCATEGORIES = {
+  Sonos: "Multimedia", Samsung: "Multimedia", DALI: "Multimedia", Apple: "Multimedia", NAD: "Multimedia", Sony: "Multimedia",
+  "Philips Hue": "Lighting",
+  "Ligne Roset": "Living",
+  Eufy: "Security",
+};
 
 export const catalogItem = (type) => CATALOG[type] || CATALOG.box;
 
@@ -1388,7 +1396,9 @@ export function tvSource(hass, tv, pieces) {
 export function pieceSounding(hass, piece, pieces) {
   const st = hass?.states?.[piece.entity_id];
   const def = catalogItem(piece.type);
-  if (def.speaker) return piece.surround && def.surround ? surroundLevel(hass, piece.entity_id) > 0 : isPlaying(st);
+  if (def.speaker && piece.surround && def.surround) return surroundLevel(hass, piece.entity_id) > 0;
+  if (def.speaker && piece.surround && def.sub) return subLevel(hass, piece.entity_id) > 0;
+  if (def.speaker) return isPlaying(st);
   if (!def.passive) return false; // players, TVs, receivers: the speakers show the sound
   if (!isSounding(st, true)) return false;
   if (isPlaying(st)) return true;

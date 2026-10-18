@@ -35,7 +35,7 @@ import {
   writePref,
 } from "./model.js";
 
-import { CATALOG, CATEGORIES, MIN_HEIGHT, MIN_SIZE, catalogItem, defaultBeamAngle, displayFeed, duplicateFurniture, newFurniture, tidyAvWiring } from "./furniture.js";
+import { CATALOG, CATEGORIES, SUBCATEGORIES, MIN_HEIGHT, MIN_SIZE, catalogItem, defaultBeamAngle, displayFeed, duplicateFurniture, newFurniture, tidyAvWiring } from "./furniture.js";
 import { FLOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, floorFinish, isOutdoor, roofFinish, wallFinish } from "./materials.js";
 import { ROOF_TYPES, roofHeight } from "./roof.js";
 import { cleaningRoom, currentRoomSensor, vacuumRooms } from "./robot.js";
@@ -123,9 +123,11 @@ details.cat summary { display:flex; align-items:center; gap:6px; padding:9px 2px
   font-weight:500; user-select:none; -webkit-user-select:none; }
 details.cat summary::-webkit-details-marker { display:none; }
 details.cat summary ha-icon { --mdc-icon-size:20px; color:var(--secondary-text-color); transition:transform .15s; }
-details.cat[open] summary ha-icon { transform:rotate(90deg); }
+details.cat[open] > summary ha-icon { transform:rotate(90deg); }
 details.cat summary .count { margin-left:auto; font-size:12px; font-weight:400; color:var(--secondary-text-color); }
 details.cat .catalog { margin-top:2px; }
+details.cat.sub { margin-left:14px; border-bottom:none; border-top:1px solid var(--divider-color); }
+details.cat.sub summary { padding:7px 2px; font-size:13px; }
 @media (prefers-reduced-motion: reduce) { details.cat summary ha-icon { transition:none; } }
 .tile { display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px; border-radius:10px;
   border:1px solid var(--divider-color); background:var(--card-background-color); cursor:grab; text-align:center;
@@ -1230,7 +1232,7 @@ class FloorplanStudioPanel extends HTMLElement {
       html += `<h3><ha-icon icon="${def.icon}"></ha-icon>${escapeHtml(item.name || t(def.label))}</h3>
         <div class="field"><label>${t("Name (optional)")}</label><input data-field="name" value="${escapeHtml(item.name || "")}" placeholder="${escapeHtml(t(def.label))}"></div>
         <div class="field"><label>${t("Type")}</label><select data-field="type">
-          ${sortedCategories().map((c) => `<optgroup label="${escapeHtml(t(c))}">${Object.entries(CATALOG).filter(([, d]) => d.cat === c)
+          ${sortedCategories(true).filter((c) => Object.values(CATALOG).some((d) => d.cat === c)).map((c) => `<optgroup label="${escapeHtml(SUBCATEGORIES[c] ? `${t(SUBCATEGORIES[c])} › ${t(c)}` : t(c))}">${Object.entries(CATALOG).filter(([, d]) => d.cat === c)
             .sort(([, a], [, b]) => t(a.label).localeCompare(t(b.label)))
             .map(([k, d]) => `<option value="${k}" ${k === item.type ? "selected" : ""}>${escapeHtml(t(d.label))}</option>`).join("")}</optgroup>`).join("")}
         </select></div>
@@ -1283,7 +1285,8 @@ class FloorplanStudioPanel extends HTMLElement {
           ? t("A light makes this lamp glow and shine. Tip: drag an entity from a room's list onto the piece.")
           : def.screen ? t("The screen lights up when this is on or playing.") : t("Tip: drag an entity from a room's list onto the piece."))}
         ${def.av ? this._avSection(item, def) : ""}
-        ${def.surround ? this._surroundSection(item) : ""}
+        ${def.surround || def.sub ? this._surroundSection(item, def) : ""}
+        ${def.homeTheater && domainOf(item.entity_id) === "media_player" ? this._bondedSection(item) : ""}
         ${def.robot && item.entity_id ? this._vacuumSection(item) : ""}
         ${item.entity_id ? `<div class="field"><label>${t("Tap action")}</label><select data-field="tap_action">
             ${tapOptions(this._hass, item, item.tap_action)}
@@ -1299,19 +1302,30 @@ class FloorplanStudioPanel extends HTMLElement {
         ${placed ? `<div class="actions"><button class="btn" data-act="edit-placed"><ha-icon icon="mdi:pencil"></ha-icon>${t("{name}: details", { name: escapeHtml(placed.name || t(catalogItem(placed.type).label)) })}</button></div>` : ""}
         <p class="muted">${t("Drag a piece onto the plan.")}</p>
         <input class="search" type="search" data-furniture-search placeholder="${t("Search furniture…")}" value="${escapeHtml(this._furnitureQuery || "")}" autocomplete="off">
-        ${sortedCategories().map((c) => {
+        ${(() => {
           // While searching: only matching pieces (name or category, in English or translated), their categories unfolded
           const q = (this._furnitureQuery || "").trim().toLowerCase();
-          const items = Object.entries(CATALOG).filter(([k, d]) => d.cat === c
-            && (!q || `${d.label} ${t(d.label)} ${d.cat} ${t(d.cat)} ${k.replace(/_/g, " ")}`.toLowerCase().includes(q)))
-            .sort(([, a], [, b]) => t(a.label).localeCompare(t(b.label)));
-          if (q && !items.length) return "";
-          return `<details class="cat" data-cat="${c}" ${q || openCategories().has(c) ? "open" : ""}>
-            <summary><ha-icon icon="mdi:chevron-right"></ha-icon>${escapeHtml(t(c))}<span class="count">${items.length}</span></summary>
-            <div class="catalog">${items.map(([k, d]) => `
-              <div class="tile" data-drag-furniture="${k}" title="${t("Drag onto the plan")}"><ha-icon icon="${d.icon}"></ha-icon>${escapeHtml(t(d.label))}</div>`).join("")}
-            </div></details>`;
-        }).join("")}`;
+          const open = openCategories();
+          const category = (c) => {
+            // (every word of the search somewhere: "samsung frame" finds The Frame in Samsung)
+            const words = q.split(/\s+/).filter(Boolean);
+            const items = Object.entries(CATALOG).filter(([k, d]) => d.cat === c && (() => {
+              const haystack = `${d.label} ${t(d.label)} ${d.cat} ${t(d.cat)} ${SUBCATEGORIES[d.cat] ? `${SUBCATEGORIES[d.cat]} ${t(SUBCATEGORIES[d.cat])}` : ""} ${k.replace(/_/g, " ")}`.toLowerCase();
+              return words.every((w) => haystack.includes(w));
+            })())
+              .sort(([, a], [, b]) => t(a.label).localeCompare(t(b.label)));
+            // A subcategory (Sonos under Multimedia) folds open inside its parent, after the parent's own pieces
+            const subs = subcategories(c).map(category).filter((x) => x.count);
+            const count = items.length + subs.reduce((n, x) => n + x.count, 0);
+            const html = `<details class="cat${SUBCATEGORIES[c] ? " sub" : ""}" data-cat="${c}" ${q || open.has(c) ? "open" : ""}>
+              <summary><ha-icon icon="mdi:chevron-right"></ha-icon>${escapeHtml(t(c))}<span class="count">${count}</span></summary>
+              ${items.length ? `<div class="catalog">${items.map(([k, d]) => `
+                <div class="tile" data-drag-furniture="${k}" title="${t("Drag onto the plan")}"><ha-icon icon="${d.icon}"></ha-icon>${escapeHtml(t(d.label))}</div>`).join("")}
+              </div>` : ""}${subs.map((x) => x.html).join("")}</details>`;
+            return { html, count };
+          };
+          return sortedCategories().map(category).filter((x) => !q || x.count).map((x) => x.html).join("");
+        })()}`;
     } else if (floor && this._tool === "marker") {
       html += `<h3><ha-icon icon="mdi:map-marker-plus-outline"></ha-icon>${t("Entities")}</h3>
         <input class="search" type="search" data-entity-search placeholder="${t("Search entities…")}" value="${escapeHtml(this._entityQuery || "")}" autocomplete="off">
@@ -1734,6 +1748,21 @@ class FloorplanStudioPanel extends HTMLElement {
           roof.flipped = !roof.flipped;
         });
         break;
+      case "bond-speaker":
+        // A soundbar's surrounds and Sub: bond or release one (it follows the soundbar's player)
+        this._change(() => {
+          const bar = this._findSelected();
+          const piece = this._floor.furniture.find((f) => f.id === b.dataset.piece);
+          if (!bar || !piece) return;
+          if (piece.surround && piece.entity_id === bar.entity_id) {
+            piece.surround = null;
+            piece.entity_id = null;
+          } else {
+            piece.surround = true;
+            piece.entity_id = bar.entity_id;
+          }
+        });
+        break;
       case "connect-speaker":
         this._change(() => {
           const piece = this._findSelected();
@@ -1955,16 +1984,42 @@ class FloorplanStudioPanel extends HTMLElement {
       .map((b) => b.entity_id))];
   }
 
-  /** A Sonos speaker bonded to a soundbar as a rear surround: it follows the soundbar. */
-  _surroundSection(item) {
+  /** A Sonos speaker bonded to a soundbar as a rear surround or its Sub: it follows the soundbar. */
+  _surroundSection(item, def) {
     const bars = this._soundbars(item);
-    return `<label class="check"><input type="checkbox" data-field="surround" ${item.surround ? "checked" : ""}> ${t("Surround speaker of a soundbar")}</label>
+    return `<label class="check"><input type="checkbox" data-field="surround" ${item.surround ? "checked" : ""}> ${def.sub ? t("Sub of a soundbar") : t("Surround speaker of a soundbar")}</label>
       ${item.surround ? `
         ${bars.length ? `<div class="actions" style="margin:4px 0 4px;flex-wrap:wrap">${bars.map((id) => `
           <button class="btn${id === item.entity_id ? " primary" : ""}" data-act="connect-speaker" data-entity="${escapeHtml(id)}">
             <ha-icon icon="mdi:surround-sound"></ha-icon>${escapeHtml(friendlyName(this._hass, id))}</button>`).join("")}</div>`
           : `<p class="muted">${t("Place the soundbar on this floor and link it to its media player first.")}</p>`}
-        <p class="muted" style="margin:4px 0 12px">${t("Bonded surrounds have no entity of their own: this one is linked to the soundbar's player. It shows sound waves while the soundbar plays and surround is on (softer for music, which the surrounds play at the ambient level unless \"Surround music full volume\" is on).")}</p>` : ""}`;
+        <p class="muted" style="margin:4px 0 12px">${def.sub
+          ? t("A bonded Sub has no entity of its own: this one is linked to the soundbar's player. It shows sound waves while the soundbar plays, unless the sub is switched off in the Sonos app.")
+          : t("Bonded surrounds have no entity of their own: this one is linked to the soundbar's player. It shows sound waves while the soundbar plays and surround is on (softer for music, which the surrounds play at the ambient level unless \"Surround music full volume\" is on).")}</p>` : ""}`;
+  }
+
+  /** Sonos speakers on this floor that can be bonded to a soundbar (surrounds, a Sub), nearest first. */
+  _bondable(bar) {
+    return this._floor.furniture
+      .filter((f) => f !== bar && (catalogItem(f.type).surround || catalogItem(f.type).sub))
+      .sort((a, b) => dist([a.x, a.y], [bar.x, bar.y]) - dist([b.x, b.y], [bar.x, bar.y]));
+  }
+
+  /**
+   * On a soundbar: the speakers bonded to it in the Sonos app. They have no entity of their
+   * own in Home Assistant, so they're set here (or on the speaker itself) and follow it.
+   */
+  _bondedSection(bar) {
+    const speakers = this._bondable(bar);
+    const bonded = (f) => f.surround && f.entity_id === bar.entity_id;
+    return `<h4>${t("Surround speakers")}</h4>
+      ${speakers.length ? `<div class="actions" style="margin:4px 0 4px;flex-wrap:wrap">${speakers.map((f) => `
+        <button class="btn${bonded(f) ? " primary" : ""}" data-act="bond-speaker" data-piece="${escapeHtml(f.id)}" aria-pressed="${bonded(f)}">
+          <ha-icon icon="${catalogItem(f.type).sub ? "mdi:surround-sound" : "mdi:speaker"}"></ha-icon>${escapeHtml(f.name || t(catalogItem(f.type).label))}${
+            // (linked to something else: say what, so two unnamed Ones can be told apart)
+            f.entity_id && !bonded(f) ? ` · ${escapeHtml(friendlyName(this._hass, f.entity_id))}` : ""}</button>`).join("")}</div>`
+        : `<p class="muted">${t("Place the surround speakers (and a Sub) on this floor first.")}</p>`}
+      <p class="muted" style="margin:4px 0 12px">${t("Tap the speakers bonded to this soundbar in the Sonos app (rear surrounds, a Sub). Bonded speakers have no entity of their own in Home Assistant: they follow this soundbar.")}</p>`;
   }
 
   // ---------- AV wiring ----------
@@ -2258,9 +2313,18 @@ class FloorplanStudioPanel extends HTMLElement {
   }
 }
 
-/** Furniture categories A–Z (by their name in the user's language), with the catch-all "Other" last. */
-const sortedCategories = () =>
-  [...CATEGORIES].sort((a, b) => (a === "Other") - (b === "Other") || t(a).localeCompare(t(b)));
+/**
+ * Furniture categories A–Z (by their name in the user's language), with the catch-all "Other"
+ * last. Subcategories (Sonos under Multimedia) are left out, or with `subs` follow their parent.
+ */
+const sortedCategories = (subs = false) =>
+  CATEGORIES.filter((c) => !SUBCATEGORIES[c])
+    .sort((a, b) => (a === "Other") - (b === "Other") || t(a).localeCompare(t(b)))
+    .flatMap((c) => (subs ? [c, ...subcategories(c)] : [c]));
+
+/** The subcategories of a category, A–Z. */
+const subcategories = (parent) =>
+  CATEGORIES.filter((c) => SUBCATEGORIES[c] === parent).sort((a, b) => t(a).localeCompare(t(b)));
 
 /** Catalog categories the user has unfolded (remembered per browser). */
 function openCategories() {

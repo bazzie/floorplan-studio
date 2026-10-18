@@ -942,6 +942,17 @@ export function surroundLevel(hass, playerId) {
   return tv || setting("surround_mode", "surround_music_full_volume") === "on" ? 1 : 0.5;
 }
 
+/**
+ * Whether the Sub bonded to a Sonos soundbar (its player) plays: 1 while the soundbar plays,
+ * 0 when it doesn't or the sub is switched off in the Sonos app ("Subwoofer enabled").
+ */
+export function subLevel(hass, playerId) {
+  if (!isPlaying(hass?.states?.[playerId])) return 0;
+  const id = deviceEntityIds(hass, playerId).find((e) => domainOf(e) === "switch"
+    && (hass.entities?.[e]?.translation_key === "sub_enabled" || e.endsWith("_subwoofer_enabled") || e.endsWith("_sub_enabled")));
+  return id && hass.states?.[id]?.state === "off" ? 0 : 1;
+}
+
 /** Pulsing ring + gentle beat for markers of media players that are playing. */
 export const PLAYING_STYLE = `
 .marker.playing .bubble { position:relative; animation:fps-beat 1.6s ease-in-out infinite; }

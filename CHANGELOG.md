@@ -2,6 +2,14 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.4.8 (2026-10-18)
+
+- Furniture catalog: Sonos under Multimedia, Philips Hue under Lighting
+- Furniture catalog: a subcategory per brand
+- Furniture catalog: the cameras and HomeBase under Security › Eufy
+- Sonos: bond surrounds and a Sub from the soundbar
+- Catalog search: a variable name the release scan read as an entity id
+
 ## 0.4.2 (2026-10-18)
 
 - 3D light profile: lamp light painted on instead of real lights and shadow maps
