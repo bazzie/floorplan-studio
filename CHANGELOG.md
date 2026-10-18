@@ -2,6 +2,10 @@
 
 What changed in each release of Floorplan Studio.
 
+## 0.5.9 (2026-10-18)
+
+- Furniture list: show the Petite Friture and LABEL51 brands
+
 ## 0.5.8 (2026-10-18)
 
 - Wave chair: seat follows the back's curve

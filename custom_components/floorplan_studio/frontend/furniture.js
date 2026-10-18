@@ -1493,7 +1493,7 @@ export const CATALOG = {
     box(0, 0, 1, 1, 0, 1, "main")] },
 };
 
-export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Samsung", "DALI", "Apple", "NAD", "Sony", "Ligne Roset", "Eufy", "Gardena", "Dreame", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
+export const CATEGORIES = ["Living", "Dining", "Bedroom", "Lighting", "Office", "Multimedia", "Sonos", "Philips Hue", "Samsung", "DALI", "Apple", "NAD", "Sony", "Ligne Roset", "LABEL51", "Petite Friture", "Eufy", "Gardena", "Dreame", "Kitchen", "Appliances", "Climate", "Security", "Bathroom", "Garden", "Structure", "Other"];
 
 /** Categories shown inside another one in the catalog (a brand's range under its kind of thing). */
 export const SUBCATEGORIES = {

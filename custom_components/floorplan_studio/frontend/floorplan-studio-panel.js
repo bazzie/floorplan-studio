@@ -2402,9 +2402,9 @@ const sortedCategories = (subs = false) =>
     .sort((a, b) => (a === "Other") - (b === "Other") || t(a).localeCompare(t(b)))
     .flatMap((c) => (subs ? [c, ...subcategories(c)] : [c]));
 
-/** The subcategories of a category, A–Z. */
+/** The subcategories of a category, A–Z (from SUBCATEGORIES, so a brand missing from CATEGORIES still shows). */
 const subcategories = (parent) =>
-  CATEGORIES.filter((c) => SUBCATEGORIES[c] === parent).sort((a, b) => t(a).localeCompare(t(b)));
+  Object.keys(SUBCATEGORIES).filter((c) => SUBCATEGORIES[c] === parent).sort((a, b) => t(a).localeCompare(t(b)));
 
 /** Catalog categories the user has unfolded (remembered per browser). */
 function openCategories() {
